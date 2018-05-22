@@ -5,6 +5,7 @@
 #include "lpngwrapper.hpp"
 #include <list>
 #include <vector>
+#include <iostream>
 
 void usage(void)
 {
@@ -12,13 +13,14 @@ void usage(void)
     exit(1);
 }
 
-void prepare_channels(MatrixXd rgb_channels[], int num_channels)
+void preprocess_channels(MatrixXd rgb_channels[], int num_channels, MatrixXd& intensity)
 {
     int x, y;
     double r,g,b,sum;
 
     int width = rgb_channels[0].cols();
     int height = rgb_channels[0].rows();
+    intensity = MatrixXd::Zero(height, width);
 
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
@@ -26,9 +28,14 @@ void prepare_channels(MatrixXd rgb_channels[], int num_channels)
             g = rgb_channels[1](y, x);
             b = rgb_channels[2](y, x);
             sum = r + g + b;
-            rgb_channels[0](y, x) = r / sum;
-            rgb_channels[1](y, x) = g / sum;
-            rgb_channels[2](y, x) = b / sum;
+            assert(r >= 0 && g >= 0 && b >= 0);
+            if (sum > 0)
+            {
+                rgb_channels[0](y, x) = r / sum;
+                rgb_channels[1](y, x) = g / sum;
+                rgb_channels[2](y, x) = b / sum;
+            }
+            intensity(y, x) = sum/3.0;
         }
     }
 }
@@ -157,12 +164,15 @@ void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, 
     for (y = y0 - wy; y < y0+wy; y++) {
         for (x = x0-wx; x < x0+wx; x++) {
             bin = rgb_channel(y, x)/ bin_size;
+
             if (bin >= num_bins)
                 bin = num_bins - 1;
             hist(bin)++;
         }
     }
+
     hist.normalize();
+
 }
 
 void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path)
@@ -191,6 +201,7 @@ void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd
                 if (max_dist < dist)
                     max_dist = dist;
             }
+
             for (i = 0; i < num_channels; i++)
             {
                 vis_rgb_channels[i](y, x) = max_dist*255.0;
@@ -201,21 +212,72 @@ void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd
     errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
 }
 
+void calculate_average_intensity(MatrixXd& intensity, int x0, int y0, int wx, int wy, double& average_intensity)
+{
+    int x, y;
+
+    int width = intensity.cols();
+    int height = intensity.rows();
+    average_intensity = 0.0;
+    int wsize = (2 * wx + 1)*(2 * wy + 1);
+
+    if (y0 < wy || y0 + wy > height || x0 < wx || x0 + wx > width)
+        return;
+
+    for (y = y0 - wy; y < y0 + wy; y++) {
+        for (x = x0 - wx; x < x0 + wx; x++) {
+            average_intensity += intensity(y, x);
+        }
+    }
+
+    average_intensity /= wsize;
+}
+
+void compare_average_intensities(double average_intensity_1, std::vector<std::vector<double>>& average_intensity_2, int num_channels, std::string vis_image_path)
+{
+    int i;
+    int x, y;
+    double dist;
+    MatrixXd vis_rgb_channels[3];
+    int height = average_intensity_2.size();
+    int width = average_intensity_2[0].size();
+
+    for (i = 0; i < num_channels; i++)
+    {
+        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+    }
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            dist = abs(average_intensity_1 - average_intensity_2[y][x]);
+
+            for (i = 0; i < num_channels; i++)
+            {
+                vis_rgb_channels[i](y, x) = dist;
+            }
+        }
+    }
+
+    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+}
+
+
 int main(int argc, char **argv)
 {
     MatrixXd rgb_channels_1[3], rgb_channels_2[3], rgb_channels_3[3];
-    VectorXd histogram_1[3];
-    std::vector<std::vector<VectorXd>> histograms_2[3];
+    MatrixXd intensity_1, intensity_2;
     int num_channels = 3;
 
-    std::string image_path[3];
+    std::string image_path[4];
     std::string arg;
     int x0, y0, wx, wy;
     int num_bins;
 
 /*
     Command line arguments:
--num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -o1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image_out.png
+-num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -o1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_out.png -o2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_out.png
 */
     int i = 1;
     while(i < argc)
@@ -235,6 +297,12 @@ int main(int argc, char **argv)
         {
             i++;
             image_path[2] = argv[i];
+        }
+
+        if (arg == "-o2")
+        {
+            i++;
+            image_path[3] = argv[i];
         }
 
         if (arg == "-x0")
@@ -271,8 +339,9 @@ int main(int argc, char **argv)
 
     read_png_file(image_path[0].c_str(), rgb_channels_1, num_channels);
     read_png_file(image_path[1].c_str(), rgb_channels_2, num_channels);
-    prepare_channels(rgb_channels_1, num_channels);
-    prepare_channels(rgb_channels_2, num_channels);
+
+    preprocess_channels(rgb_channels_1, num_channels, intensity_1);
+    preprocess_channels(rgb_channels_2, num_channels, intensity_2);
 
     if (x0 < 0 || x0 >= rgb_channels_1[0].cols())
     {
@@ -285,6 +354,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "y0 out of range: %d\n", y0);
         exit(1);
     }
+
+    // histogram statistic
+    VectorXd histogram_1[3];
+    std::vector<std::vector<VectorXd>> histograms_2[3];
 
     for (i = 0; i < 3; i++)
     {
@@ -307,6 +380,22 @@ int main(int argc, char **argv)
     }
 
     compare_histograms(histogram_1, histograms_2, num_channels, image_path[2]);
+
+    // average intensity statistic
+    double average_intensity_1;
+    std::vector<std::vector<double>> average_intensity_2;
+
+    calculate_average_intensity(intensity_1, x0, y0, wx, wy, average_intensity_1);
+    average_intensity_2.resize(height);
+    for (y = 0; y < height; y++) {
+        average_intensity_2[y].resize(width);
+        for (x = 0; x < width; x++) {
+            calculate_average_intensity(intensity_2, x, y, wx, wy, average_intensity_2[y][x]);
+        }
+    }
+    compare_average_intensities(average_intensity_1, average_intensity_2, num_channels, image_path[3]);
+
+
 //    MatrixXd image_diff;
 //    compare_channels(rgb_channels_1, rgb_channels_2, num_channels, image_diff, image_path[2]);
 
