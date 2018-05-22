@@ -4,7 +4,7 @@
 #include "stdafx.h"
 #include "lpngwrapper.hpp"
 #include <list>
-
+#include <vector>
 
 void usage(void)
 {
@@ -141,27 +141,189 @@ void compare_channels(MatrixXd rgb_channels1[], MatrixXd rgb_channels2[], int nu
     }
 }
 
+void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, VectorXd& hist, int num_bins)
+{
+    int bin;
+    int x, y;
+
+    hist = VectorXd::Zero(num_bins);
+    int width = rgb_channel.cols();
+    int height = rgb_channel.rows();
+    double bin_size = 1.0 / num_bins;
+
+    if (y0 < wy || y0 + wy > height || x0 < wx || x0 + wx > width)
+        return;
+
+    for (y = y0 - wy; y < y0+wy; y++) {
+        for (x = x0-wx; x < x0+wx; x++) {
+            bin = rgb_channel(y, x)/ bin_size;
+            if (bin >= num_bins)
+                bin = num_bins - 1;
+            hist(bin)++;
+        }
+    }
+    hist /= ((2 * wx + 1)*(2 * wy + 1));
+}
+
+void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path)
+{
+    int i;
+    int x, y;
+    double min_val, max_val;
+    VectorXd hist, hist1, hist2;
+    MatrixXd vis_rgb_channels[3];
+    int height = histograms_2[0].size();
+    int width = histograms_2[0][0].size();
+    double val;
+
+    for (i = 0; i < num_channels; i++)
+    {
+        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+    }
+
+    for (i = 0; i < num_channels; i++)
+    {
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
+            {
+                hist = histogram_1[i] - histograms_2[i][y][x];
+
+                //1111111111111111111111111111111111
+                max_val = histogram_1[i].maxCoeff();
+                min_val = histogram_1[i].minCoeff();
+
+                max_val = histograms_2[i][y][x].maxCoeff();
+                min_val = histograms_2[i][y][x].minCoeff();
+
+                max_val = hist.maxCoeff();
+                min_val = hist.minCoeff();
+
+                if (x == 75 && y == 37)
+                {
+                    val = 0;
+                }
+                //11111111111111111111111111111111111
+
+                val = hist.norm();
+                val /= hist.size();
+                val *= 255.0;
+                vis_rgb_channels[i](y, x) = val;
+            }
+        }
+    }
+
+    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+}
+
 int main(int argc, char **argv)
 {
     MatrixXd rgb_channels_1[3], rgb_channels_2[3], rgb_channels_3[3];
+    VectorXd histogram_1[3];
+    std::vector<std::vector<VectorXd>> histograms_2[3];
     int num_channels = 3;
 
-    if (argc != 4)
+    std::string image_path[3];
+    std::string arg;
+    int x0, y0, wx, wy;
+    int num_bins;
+
+/*
+    Command line arguments:
+-num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -o1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image_out.png
+*/
+    int i = 1;
+    while(i < argc)
     {
-        usage();
+        arg = argv[i];
+        if (arg == "-i1")
+        {
+            i++;
+            image_path[0] = argv[i];
+        }
+        if (arg == "-i2")
+        {
+            i++;
+            image_path[1] = argv[i];
+        }
+        if (arg == "-o1")
+        {
+            i++;
+            image_path[2] = argv[i];
+        }
+
+        if (arg == "-x0")
+        {
+            i++;
+            x0 = atoi(argv[i]);
+        }
+
+        if (arg == "-y0")
+        {
+            i++;
+            y0 = atoi(argv[i]);
+        }
+
+        if (arg == "-wx")
+        {
+            i++;
+            wx = atoi(argv[i]);
+        }
+
+        if (arg == "-wy")
+        {
+            i++;
+            wy = atoi(argv[i]);
+        }
+
+        if (arg == "-num_bins")
+        {
+            i++;
+            num_bins = atoi(argv[i]);
+        }
+        i++;
     }
 
-    std::string image1_path = argv[1];
-    std::string image2_path = argv[2];
-    std::string image3_path = argv[3];
-
-    read_png_file(image1_path.c_str(), rgb_channels_1, num_channels);
-    read_png_file(image2_path.c_str(), rgb_channels_2, num_channels);
+    read_png_file(image_path[0].c_str(), rgb_channels_1, num_channels);
+    read_png_file(image_path[1].c_str(), rgb_channels_2, num_channels);
     prepare_channels(rgb_channels_1, num_channels);
     prepare_channels(rgb_channels_2, num_channels);
 
-    MatrixXd image_diff;
-    compare_channels(rgb_channels_1, rgb_channels_2, num_channels, image_diff, image3_path);
+    if (x0 < 0 || x0 >= rgb_channels_1[0].cols())
+    {
+        fprintf(stderr, "x0 out of range: %d\n", x0);
+        exit(1);
+    }
+
+    if (y0 < 0 || y0 >= rgb_channels_1[0].rows())
+    {
+        fprintf(stderr, "y0 out of range: %d\n", y0);
+        exit(1);
+    }
+
+    for (i = 0; i < 3; i++)
+    {
+        calculate_histogram(rgb_channels_1[i], x0, y0, wx, wy, histogram_1[i], num_bins);
+    }
+
+    int width = rgb_channels_2[0].cols();
+    int height = rgb_channels_2[0].rows();
+    int x, y;
+
+    for (i = 0; i < 3; i++)
+    {
+        histograms_2[i].resize(height);
+        for (y = 0; y < height; y++) {
+            histograms_2[i][y].resize(width);
+            for (x = 0; x < width; x++) {
+                calculate_histogram(rgb_channels_2[i], x, y, wx, wy, histograms_2[i][y][x], num_bins);
+            }
+        }
+    }
+
+    compare_histograms(histogram_1, histograms_2, num_channels, image_path[2]);
+//    MatrixXd image_diff;
+//    compare_channels(rgb_channels_1, rgb_channels_2, num_channels, image_diff, image_path[2]);
 
     return 0;
 }
