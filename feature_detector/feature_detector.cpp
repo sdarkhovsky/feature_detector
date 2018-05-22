@@ -162,53 +162,38 @@ void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, 
             hist(bin)++;
         }
     }
-    hist /= ((2 * wx + 1)*(2 * wy + 1));
+    hist.normalize();
 }
 
 void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path)
 {
     int i;
     int x, y;
-    double min_val, max_val;
-    VectorXd hist, hist1, hist2;
+    double dist, max_dist;
+    VectorXd hist1, hist2;
     MatrixXd vis_rgb_channels[3];
     int height = histograms_2[0].size();
     int width = histograms_2[0][0].size();
-    double val;
 
     for (i = 0; i < num_channels; i++)
     {
         vis_rgb_channels[i] = MatrixXd::Zero(height, width);
     }
 
-    for (i = 0; i < num_channels; i++)
+    for (y = 0; y < height; y++)
     {
-        for (y = 0; y < height; y++)
+        for (x = 0; x < width; x++)
         {
-            for (x = 0; x < width; x++)
+            max_dist = 0.0;
+            for (i = 0; i < num_channels; i++)
             {
-                hist = histogram_1[i] - histograms_2[i][y][x];
-
-                //1111111111111111111111111111111111
-                max_val = histogram_1[i].maxCoeff();
-                min_val = histogram_1[i].minCoeff();
-
-                max_val = histograms_2[i][y][x].maxCoeff();
-                min_val = histograms_2[i][y][x].minCoeff();
-
-                max_val = hist.maxCoeff();
-                min_val = hist.minCoeff();
-
-                if (x == 75 && y == 37)
-                {
-                    val = 0;
-                }
-                //11111111111111111111111111111111111
-
-                val = hist.norm();
-                val /= hist.size();
-                val *= 255.0;
-                vis_rgb_channels[i](y, x) = val;
+                dist = (histogram_1[i] - histograms_2[i][y][x]).cwiseAbs().maxCoeff();
+                if (max_dist < dist)
+                    max_dist = dist;
+            }
+            for (i = 0; i < num_channels; i++)
+            {
+                vis_rgb_channels[i](y, x) = max_dist*255.0;
             }
         }
     }
