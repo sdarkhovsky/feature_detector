@@ -200,14 +200,14 @@ void visualize_identity_score(MatrixXd& identity_score, int num_channels, std::s
     errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
 }
 
-void calculate_on_edge_score(MatrixXd& rgb_channel, int x0, int y0, double& on_edge_score)
+void calculate_edge_score(MatrixXd& rgb_channel, int x0, int y0, double& edge_score)
 {
     int bin;
     int x, y;
     int wx = 1;
     int wy = 1;
 
-    on_edge_score = 0.0;
+    edge_score = 0.0;
     int width = rgb_channel.cols();
     int height = rgb_channel.rows();
 
@@ -227,18 +227,18 @@ void calculate_on_edge_score(MatrixXd& rgb_channel, int x0, int y0, double& on_e
             rgb_channel(y + 1, x) - rgb_channel(y - 1, x) +
             rgb_channel(y + 1, x + 1) - rgb_channel(y - 1, x + 1)) / 6.0;
 
-    on_edge_score = sqrt(dfdx*dfdx + dfdy*dfdy);
+    edge_score = sqrt(dfdx*dfdx + dfdy*dfdy);
 }
 
-void compare_on_edge_score(double on_edge_score_1[], std::vector<std::vector<double>> on_edge_score_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
+void compare_edge_scores(double edge_score_1[], std::vector<std::vector<double>> edge_score_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
 {
     int i;
     int x, y;
     double diff, max_diff;
     MatrixXd vis_rgb_channels[3];
     MatrixXd edge_diff;
-    int height = on_edge_score_2[0].size();
-    int width = on_edge_score_2[0][0].size();
+    int height = edge_score_2[0].size();
+    int width = edge_score_2[0][0].size();
 
     for (i = 0; i < num_channels; i++)
     {
@@ -253,7 +253,9 @@ void compare_on_edge_score(double on_edge_score_1[], std::vector<std::vector<dou
             max_diff = 0.0;
             for (i = 0; i < num_channels; i++)
             {
-                diff = abs(on_edge_score_1[i] - on_edge_score_2[i][y][x]);
+
+                diff = abs(edge_score_1[i] - edge_score_2[i][y][x]);
+
                 if (max_diff < diff)
                     max_diff = diff;
             }
@@ -290,9 +292,11 @@ int main(int argc, char **argv)
     MatrixXd identity_score;
     int num_channels = 3;
 
-    std::string image_path[4];
+    std::string image_path[2];
     std::string identity_score_image_path;
-    std::string on_edge_image_path;
+    std::string edge_image_path;
+    std::string average_intensity_image_path;
+    std::string histogram_diff_image_path;
     std::string arg;
     int x0, y0, wx, wy;
     int num_bins;
@@ -300,7 +304,7 @@ int main(int argc, char **argv)
 
 /*
     Command line arguments:
--num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -o1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_out.png -o2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_out.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oedge C:\Users\Sam\Documents\EyeSignalsProjects\images\edge_diff.png
+-num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oedge C:\Users\Sam\Documents\EyeSignalsProjects\images\edge_diff.png
 */
     int i = 1;
     while(i < argc)
@@ -324,19 +328,19 @@ int main(int argc, char **argv)
         if (arg == "-oedge")
         {
             i++;
-            on_edge_image_path = argv[i];
+            edge_image_path = argv[i];
         }
 
-        if (arg == "-o1")
+        if (arg == "-ohist")
         {
             i++;
-            image_path[2] = argv[i];
+            histogram_diff_image_path = argv[i];
         }
 
-        if (arg == "-o2")
+        if (arg == "-oavint")
         {
             i++;
-            image_path[3] = argv[i];
+            average_intensity_image_path = argv[i];
         }
 
         if (arg == "-x0")
@@ -415,29 +419,29 @@ int main(int argc, char **argv)
         }
     }
 
-    compare_histograms(histogram_1, histograms_2, num_channels, image_path[2], identity_score);
+    compare_histograms(histogram_1, histograms_2, num_channels, histogram_diff_image_path, identity_score);
 
     // on-edge statistic
-    double on_edge_score_1[3];
-    std::vector<std::vector<double>> on_edge_score_2[3];
+    double edge_score_1[3];
+    std::vector<std::vector<double>> edge_score_2[3];
 
     for (i = 0; i < 3; i++)
     {
-        calculate_on_edge_score(rgb_channels_1[i], x0, y0, on_edge_score_1[i]);
+        calculate_edge_score(rgb_channels_1[i], x0, y0, edge_score_1[i]);
     }
 
     for (i = 0; i < 3; i++)
     {
-        on_edge_score_2[i].resize(height);
+        edge_score_2[i].resize(height);
         for (y = 0; y < height; y++) {
-            on_edge_score_2[i][y].resize(width);
+            edge_score_2[i][y].resize(width);
             for (x = 0; x < width; x++) {
-                calculate_on_edge_score(rgb_channels_2[i], x, y, on_edge_score_2[i][y][x]);
+                calculate_edge_score(rgb_channels_2[i], x, y, edge_score_2[i][y][x]);
             }
         }
     }
 
-    compare_on_edge_score(on_edge_score_1, on_edge_score_2, num_channels, on_edge_image_path, identity_score);
+    compare_edge_scores(edge_score_1, edge_score_2, num_channels, edge_image_path, identity_score);
 
 #ifdef use_average_intensity
     // average intensity statistic
@@ -452,7 +456,7 @@ int main(int argc, char **argv)
             calculate_average_intensity(intensity_2, x, y, wx, wy, average_intensity_2[y][x]);
         }
     }
-    compare_average_intensities(average_intensity_1, average_intensity_2, num_channels, image_path[3], identity_score);
+    compare_average_intensities(average_intensity_1, average_intensity_2, num_channels, average_intensity_image_path, identity_score);
 #endif
 
     visualize_identity_score(identity_score, num_channels, identity_score_image_path);
