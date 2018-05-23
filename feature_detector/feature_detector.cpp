@@ -40,114 +40,6 @@ void preprocess_channels(MatrixXd rgb_channels[], int num_channels, MatrixXd& in
     }
 }
 
-void compare_channels(MatrixXd rgb_channels1[], MatrixXd rgb_channels2[], int num_channels, MatrixXd& image_diff, std::string vis_image_path)
-{
-    int x1, y1, x2, y2;
-    int sh_x2, sh_y2;  // shift of the second image
-    int sh_x, sh_y;
-    int i;
-    int diff_cnt;
-    double ch_diff, sum;
-    int width = rgb_channels1[0].cols();
-    int height = rgb_channels1[0].rows();
-
-    int sh_step_x = 4, sh_step_y = 4;
-    int sh_width = width/sh_step_x;
-    int sh_height = height/sh_step_y;
-
-    image_diff = MatrixXd::Zero(sh_height, sh_width);
-
-    std::list<std::pair <int, int>> min_diff_list;
-
-    /* compare the shifted image 2 with the image 1*/
-    for (sh_y = 0; sh_y < sh_height; sh_y++) {
-        sh_y2 = (sh_y - sh_height / 2)*sh_step_y;
-        for (sh_x = 0; sh_x < sh_width; sh_x++) {
-            sh_x2 = (sh_x - sh_width / 2)*sh_step_x;
-            /* element (x1,y1) of the image 1 is compared against (x1-sh_x2,y1-sh_y2) of the image 2 */
-            sum = 0;
-            diff_cnt = 0;
-            for (y1 = 0; y1 < height; y1++) {
-                y2 = y1 - sh_y2;
-                for (x1 = 0; x1 < width; x1++) {
-                    x2 = x1 - sh_x2;
-                    if (x2 < 0 || x2 >= width || y2 < 0 || y2 >= height)
-                        continue;
-                    for (i = 0; i < 3; i++) {
-                        ch_diff = rgb_channels1[i](y1, x1) - rgb_channels2[i](y2, x2);
-                        sum += ch_diff * ch_diff;
-                        diff_cnt++;
-                    }
-                }
-            }
-
-            if (diff_cnt > 0)
-                image_diff(sh_y, sh_x) = sqrt(sum) / diff_cnt;
-            else
-                image_diff(sh_y, sh_x) = FLT_MAX;
-        }
-    }
-
-    // calculate local min in image_diff
-    for (sh_y = 1; sh_y < sh_height-1; sh_y++) {
-//        printf("\n");
-        for (sh_x = 1; sh_x < sh_width-1; sh_x++) {
-//            printf("%f ", image_diff(sh_y, sh_x));
-
-            if (image_diff(sh_y, sh_x) < image_diff(sh_y-1, sh_x) &&
-                image_diff(sh_y, sh_x) < image_diff(sh_y, sh_x-1) &&
-                image_diff(sh_y, sh_x) < image_diff(sh_y+1, sh_x) &&
-                image_diff(sh_y, sh_x) < image_diff(sh_y, sh_x + 1))
-            {
-                printf("sh_x=%d sh_y=%d\n", sh_x, sh_y);
-                min_diff_list.push_back(std::make_pair(sh_x, sh_y));
-            }
-        }
-    }
-
-    assert(num_channels == 3);
-    MatrixXd vis_rgb_channels[3];
-    for (i = 0; i < num_channels; i++)
-    {
-        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
-    }
-
-    std::size_t found = vis_image_path.find_last_of(".");
-    assert(found != std::string::npos);
-    std::string vis_image_path_base = vis_image_path.substr(0, found);
-    for (std::list<std::pair <int, int>>::iterator it = min_diff_list.begin(); it != min_diff_list.end(); ++it)
-    {
-        sh_x = it->first;
-        sh_y = it->second;
-        sh_y2 = (sh_y - sh_height / 2)*sh_step_y;
-        sh_x2 = (sh_x - sh_width / 2)*sh_step_x;
-        for (y1 = 0; y1 < height; y1++) {
-            y2 = y1 - sh_y2;
-            for (x1 = 0; x1 < width; x1++) {
-                x2 = x1 - sh_x2;
-                if (x2 < 0 || x2 >= width || y2 < 0 || y2 >= height)
-                {
-                    for (i = 0; i < 3; i++)
-                        vis_rgb_channels[i](y1, x1) = 255.0;
-                }
-                else
-                {
-                    sum = 0;
-                    for (i = 0; i < 3; i++) {
-                        ch_diff = rgb_channels1[i](y1, x1) - rgb_channels2[i](y2, x2);
-                        sum += ch_diff * ch_diff;
-                    }
-                    for (i = 0; i < 3; i++)
-                        vis_rgb_channels[i](y1, x1) = sum*255.0;
-                }
-            }
-        }
-
-        std::string image_path = vis_image_path_base + "_" + std::to_string(sh_x) + "_" + std::to_string(sh_y) + ".png";
-        errno_t err = write_png_file(image_path.c_str(), vis_rgb_channels, 3);
-    }
-}
-
 void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, VectorXd& hist, int num_bins)
 {
     int bin;
@@ -158,11 +50,11 @@ void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, 
     int height = rgb_channel.rows();
     double bin_size = 1.0 / num_bins;
 
-    if (y0 < wy || y0 + wy > height || x0 < wx || x0 + wx > width)
+    if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
         return;
 
-    for (y = y0 - wy; y < y0+wy; y++) {
-        for (x = x0-wx; x < x0+wx; x++) {
+    for (y = y0 - wy; y <= y0+wy; y++) {
+        for (x = x0-wx; x <= x0+wx; x++) {
             bin = rgb_channel(y, x)/ bin_size;
 
             if (bin >= num_bins)
@@ -175,7 +67,7 @@ void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, 
 
 }
 
-void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path)
+void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
 {
     int i;
     int x, y;
@@ -206,6 +98,8 @@ void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd
             {
                 vis_rgb_channels[i](y, x) = max_dist*255.0;
             }
+
+            identity_score(y, x) = identity_score(y, x)*max_dist;
         }
     }
 
@@ -221,11 +115,11 @@ void calculate_average_intensity(MatrixXd& intensity, int x0, int y0, int wx, in
     average_intensity = 0.0;
     int wsize = (2 * wx + 1)*(2 * wy + 1);
 
-    if (y0 < wy || y0 + wy > height || x0 < wx || x0 + wx > width)
+    if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
         return;
 
-    for (y = y0 - wy; y < y0 + wy; y++) {
-        for (x = x0 - wx; x < x0 + wx; x++) {
+    for (y = y0 - wy; y <= y0 + wy; y++) {
+        for (x = x0 - wx; x <= x0 + wx; x++) {
             average_intensity += intensity(y, x);
         }
     }
@@ -233,7 +127,7 @@ void calculate_average_intensity(MatrixXd& intensity, int x0, int y0, int wx, in
     average_intensity /= wsize;
 }
 
-void compare_average_intensities(double average_intensity_1, std::vector<std::vector<double>>& average_intensity_2, int num_channels, std::string vis_image_path)
+void compare_average_intensities(double average_intensity_1, std::vector<std::vector<double>>& average_intensity_2, int num_channels, std::string vis_image_path, MatrixXd& identity_score)
 {
     int i;
     int x, y;
@@ -257,6 +151,8 @@ void compare_average_intensities(double average_intensity_1, std::vector<std::ve
             {
                 vis_rgb_channels[i](y, x) = dist;
             }
+
+            identity_score(y, x) = identity_score(y, x) * dist / 255.0;
         }
     }
 
@@ -264,20 +160,147 @@ void compare_average_intensities(double average_intensity_1, std::vector<std::ve
 }
 
 
+void visualize_identity_score(MatrixXd& identity_score, int num_channels, std::string vis_image_path)
+{
+    int i;
+    int x, y;
+    double dist;
+    MatrixXd vis_rgb_channels[3];
+
+    int width = identity_score.cols();
+    int height = identity_score.rows();
+
+
+    for (i = 0; i < num_channels; i++)
+    {
+        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+    }
+
+    int min_x, min_y;
+    identity_score.minCoeff(&min_y, &min_x);
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            if (x == min_x && y == min_y) 
+            {
+                vis_rgb_channels[0](y, x) = 255.0;
+            }
+            else
+            {
+                for (i = 0; i < num_channels; i++)
+                {
+                    vis_rgb_channels[i](y, x) = identity_score(y, x) * 255.0;
+                }
+            }
+        }
+    }
+
+    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+}
+
+void calculate_on_edge_score(MatrixXd& rgb_channel, int x0, int y0, double& on_edge_score)
+{
+    int bin;
+    int x, y;
+    int wx = 1;
+    int wy = 1;
+
+    on_edge_score = 0.0;
+    int width = rgb_channel.cols();
+    int height = rgb_channel.rows();
+
+    if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
+        return;
+
+    x = x0;
+    y = y0;
+
+    double dfdx = 
+        (rgb_channel(y - 1, x + 1) - rgb_channel(y - 1, x - 1) +
+        rgb_channel(y, x + 1) - rgb_channel(y, x - 1) +
+        rgb_channel(y + 1, x + 1) - rgb_channel(y + 1, x - 1)) / 6.0;
+
+    double dfdy =
+        (rgb_channel(y + 1, x - 1) - rgb_channel(y - 1, x - 1) +
+            rgb_channel(y + 1, x) - rgb_channel(y - 1, x) +
+            rgb_channel(y + 1, x + 1) - rgb_channel(y - 1, x + 1)) / 6.0;
+
+    on_edge_score = sqrt(dfdx*dfdx + dfdy*dfdy);
+}
+
+void compare_on_edge_score(double on_edge_score_1[], std::vector<std::vector<double>> on_edge_score_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
+{
+    int i;
+    int x, y;
+    double diff, max_diff;
+    MatrixXd vis_rgb_channels[3];
+    MatrixXd edge_diff;
+    int height = on_edge_score_2[0].size();
+    int width = on_edge_score_2[0][0].size();
+
+    for (i = 0; i < num_channels; i++)
+    {
+        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+        edge_diff = MatrixXd::Zero(height, width);
+    }
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            max_diff = 0.0;
+            for (i = 0; i < num_channels; i++)
+            {
+                diff = abs(on_edge_score_1[i] - on_edge_score_2[i][y][x]);
+                if (max_diff < diff)
+                    max_diff = diff;
+            }
+
+            edge_diff(y, x) = max_diff;
+        }
+    }
+
+
+    double maxCoeff;
+    maxCoeff = edge_diff.maxCoeff();
+    edge_diff /= maxCoeff;
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            for (i = 0; i < num_channels; i++)
+            {
+                vis_rgb_channels[i](y, x) = edge_diff(y,x)*255.0;
+            }
+
+            identity_score(y, x) = identity_score(y, x)*edge_diff(y, x);
+        }
+    }
+
+    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+}
+
 int main(int argc, char **argv)
 {
     MatrixXd rgb_channels_1[3], rgb_channels_2[3], rgb_channels_3[3];
     MatrixXd intensity_1, intensity_2;
+    MatrixXd identity_score;
     int num_channels = 3;
 
     std::string image_path[4];
+    std::string identity_score_image_path;
+    std::string on_edge_image_path;
     std::string arg;
     int x0, y0, wx, wy;
     int num_bins;
+    int x, y;
 
 /*
     Command line arguments:
--num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -o1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_out.png -o2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_out.png
+-num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -o1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_out.png -o2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_out.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oedge C:\Users\Sam\Documents\EyeSignalsProjects\images\edge_diff.png
 */
     int i = 1;
     while(i < argc)
@@ -293,6 +316,17 @@ int main(int argc, char **argv)
             i++;
             image_path[1] = argv[i];
         }
+        if (arg == "-oid")
+        {
+            i++;
+            identity_score_image_path = argv[i];
+        }
+        if (arg == "-oedge")
+        {
+            i++;
+            on_edge_image_path = argv[i];
+        }
+
         if (arg == "-o1")
         {
             i++;
@@ -355,6 +389,12 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    int width = rgb_channels_2[0].cols();
+    int height = rgb_channels_2[0].rows();
+
+    identity_score = MatrixXd::Ones(height, width);
+
+
     // histogram statistic
     VectorXd histogram_1[3];
     std::vector<std::vector<VectorXd>> histograms_2[3];
@@ -363,10 +403,6 @@ int main(int argc, char **argv)
     {
         calculate_histogram(rgb_channels_1[i], x0, y0, wx, wy, histogram_1[i], num_bins);
     }
-
-    int width = rgb_channels_2[0].cols();
-    int height = rgb_channels_2[0].rows();
-    int x, y;
 
     for (i = 0; i < 3; i++)
     {
@@ -379,8 +415,31 @@ int main(int argc, char **argv)
         }
     }
 
-    compare_histograms(histogram_1, histograms_2, num_channels, image_path[2]);
+    compare_histograms(histogram_1, histograms_2, num_channels, image_path[2], identity_score);
 
+    // on-edge statistic
+    double on_edge_score_1[3];
+    std::vector<std::vector<double>> on_edge_score_2[3];
+
+    for (i = 0; i < 3; i++)
+    {
+        calculate_on_edge_score(rgb_channels_1[i], x0, y0, on_edge_score_1[i]);
+    }
+
+    for (i = 0; i < 3; i++)
+    {
+        on_edge_score_2[i].resize(height);
+        for (y = 0; y < height; y++) {
+            on_edge_score_2[i][y].resize(width);
+            for (x = 0; x < width; x++) {
+                calculate_on_edge_score(rgb_channels_2[i], x, y, on_edge_score_2[i][y][x]);
+            }
+        }
+    }
+
+    compare_on_edge_score(on_edge_score_1, on_edge_score_2, num_channels, on_edge_image_path, identity_score);
+
+#ifdef use_average_intensity
     // average intensity statistic
     double average_intensity_1;
     std::vector<std::vector<double>> average_intensity_2;
@@ -393,11 +452,10 @@ int main(int argc, char **argv)
             calculate_average_intensity(intensity_2, x, y, wx, wy, average_intensity_2[y][x]);
         }
     }
-    compare_average_intensities(average_intensity_1, average_intensity_2, num_channels, image_path[3]);
+    compare_average_intensities(average_intensity_1, average_intensity_2, num_channels, image_path[3], identity_score);
+#endif
 
-
-//    MatrixXd image_diff;
-//    compare_channels(rgb_channels_1, rgb_channels_2, num_channels, image_diff, image_path[2]);
+    visualize_identity_score(identity_score, num_channels, identity_score_image_path);
 
     return 0;
 }
