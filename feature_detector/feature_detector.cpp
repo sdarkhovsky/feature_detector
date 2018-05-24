@@ -220,7 +220,6 @@ namespace F_D {
         minCoeff = identity_score.minCoeff();
         maxCoeff = identity_score.maxCoeff();
         double probableCoeff = minCoeff + (maxCoeff - minCoeff)*0.1;
-
         for (y = 0; y < height; y++)
         {
             for (x = 0; x < width; x++)
@@ -228,13 +227,21 @@ namespace F_D {
                 double score = identity_score(y, x);
                 if (score < probableCoeff)
                 {
-                    vis_rgb_channels[0](y, x) = 255.0;
+                    if (x == x1 && y == y1)
+                        vis_rgb_channels[1](y, x) = 255.0;
+                    else
+                        vis_rgb_channels[0](y, x) = 255.0;
                 }
                 else
                 {
-                    for (i = 0; i < num_channels; i++)
+                    if (x == x1 && y == y1)
+                        vis_rgb_channels[2](y, x) = 255.0;
+                    else
                     {
-                        vis_rgb_channels[i](y, x) = identity_score(y, x) * 255.0;
+                        for (i = 0; i < num_channels; i++)
+                        {
+                            vis_rgb_channels[i](y, x) = identity_score(y, x) * 255.0;
+                        }
                     }
                 }
             }
@@ -355,6 +362,7 @@ int main(int argc, char **argv)
 
     /*
     Command line arguments:
+    -x0 136 -y0 53 -x1 90 -y1 54 -num_bins 10 -wx 3 -wy 3 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
     -x0 78 -y0 12 -x1 32 -y1 8 -num_bins 10 -wx 3 -wy 3 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
     -num_bins 10 -wx 3 -wy 3 -x0 78 -y0 12 -x1 32 -y1 8 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
     */
