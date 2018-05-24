@@ -7,313 +7,334 @@
 #include <vector>
 #include <iostream>
 
-void usage(void)
-{
-    fprintf(stderr, "usage: feature_detector <input_image_1_file_path> <input_image_2_file_path> <output_image_3_file_path>\n");
-    exit(1);
-}
+// coordinates of the corresponidng point on the second image
+namespace F_D {
+    int x1, y1;
 
-// input: in [0,1]
-// output: in [0.5,1]  
-double dist_func(double in_val)
-{
-    double in_min_bound = 0.0;
-    double in_max_bound = 1.0;
-    double out_min_bound = 0.8;
-    double out_max_bound = 1.0;
-    double out_val = (in_val - in_min_bound) / (in_max_bound - in_min_bound);
-    out_val = out_min_bound + out_val*(out_max_bound - out_min_bound);
-    if (out_val < out_min_bound)
-        out_val = out_min_bound;
-    if (out_val > out_max_bound)
-        out_val = out_max_bound;
-    return out_val;
-}
+    void usage(void)
+    {
+        fprintf(stderr, "usage: feature_detector <input_image_1_file_path> <input_image_2_file_path> <output_image_3_file_path>\n");
+        exit(1);
+    }
 
-void preprocess_channels(MatrixXd rgb_channels[], int num_channels, MatrixXd& intensity)
-{
-    int x, y;
-    double r,g,b,sum;
+    // input: in [0,1]
+    // output: in [0.5,1]  
+    double dist_func(double in_val)
+    {
+        double in_min_bound = 0.0;
+        double in_max_bound = 1.0;
+        double out_min_bound = 0.8;
+        double out_max_bound = 1.0;
+        double out_val = (in_val - in_min_bound) / (in_max_bound - in_min_bound);
+        out_val = out_min_bound + out_val*(out_max_bound - out_min_bound);
+        if (out_val < out_min_bound)
+            out_val = out_min_bound;
+        if (out_val > out_max_bound)
+            out_val = out_max_bound;
+        return out_val;
+    }
 
-    int width = rgb_channels[0].cols();
-    int height = rgb_channels[0].rows();
-    intensity = MatrixXd::Zero(height, width);
+    void preprocess_channels(MatrixXd rgb_channels[], int num_channels, MatrixXd& intensity)
+    {
+        int x, y;
+        double r, g, b, sum;
 
-    for (y = 0; y < height; y++) {
-        for (x = 0; x < width; x++) {
-            r = rgb_channels[0](y, x);
-            g = rgb_channels[1](y, x);
-            b = rgb_channels[2](y, x);
-            sum = r + g + b;
-            assert(r >= 0 && g >= 0 && b >= 0);
-            if (sum > 0)
-            {
-                rgb_channels[0](y, x) = r / sum;
-                rgb_channels[1](y, x) = g / sum;
-                rgb_channels[2](y, x) = b / sum;
+        int width = rgb_channels[0].cols();
+        int height = rgb_channels[0].rows();
+        intensity = MatrixXd::Zero(height, width);
+
+        for (y = 0; y < height; y++) {
+            for (x = 0; x < width; x++) {
+                r = rgb_channels[0](y, x);
+                g = rgb_channels[1](y, x);
+                b = rgb_channels[2](y, x);
+                sum = r + g + b;
+                assert(r >= 0 && g >= 0 && b >= 0);
+                if (sum > 0)
+                {
+                    rgb_channels[0](y, x) = r / sum;
+                    rgb_channels[1](y, x) = g / sum;
+                    rgb_channels[2](y, x) = b / sum;
+                }
+                intensity(y, x) = sum / 3.0 / 255.0;
             }
-            intensity(y, x) = sum/3.0/255.0;
-        }
-    }
-}
-
-void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, VectorXd& hist, int num_bins)
-{
-    int bin;
-    int x, y;
-
-    hist = VectorXd::Zero(num_bins);
-    int width = rgb_channel.cols();
-    int height = rgb_channel.rows();
-    double bin_size = 1.0 / num_bins;
-
-    if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
-        return;
-
-    for (y = y0 - wy; y <= y0+wy; y++) {
-        for (x = x0-wx; x <= x0+wx; x++) {
-            bin = rgb_channel(y, x)/ bin_size;
-
-            if (bin >= num_bins)
-                bin = num_bins - 1;
-            hist(bin)++;
         }
     }
 
-    hist.normalize();
-
-}
-
-void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
-{
-    int i;
-    int x, y;
-    double dist, max_dist;
-    VectorXd hist1, hist2;
-    MatrixXd vis_rgb_channels[3];
-    int height = histograms_2[0].size();
-    int width = histograms_2[0][0].size();
-
-    for (i = 0; i < num_channels; i++)
+    void calculate_histogram(MatrixXd& rgb_channel, int x0, int y0, int wx, int wy, VectorXd& hist, int num_bins)
     {
-        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+        int bin;
+        int x, y;
+
+        hist = VectorXd::Zero(num_bins);
+        int width = rgb_channel.cols();
+        int height = rgb_channel.rows();
+        double bin_size = 1.0 / num_bins;
+
+        if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
+            return;
+
+        for (y = y0 - wy; y <= y0 + wy; y++) {
+            for (x = x0 - wx; x <= x0 + wx; x++) {
+                bin = rgb_channel(y, x) / bin_size;
+
+                if (bin >= num_bins)
+                    bin = num_bins - 1;
+                hist(bin)++;
+            }
+        }
+
+        hist.normalize();
+
     }
 
-    for (y = 0; y < height; y++)
+
+    void DrawCorrespondingPoint(MatrixXd vis_rgb_channels[], int num_channels)
     {
-        for (x = 0; x < width; x++)
+        int i;
+        for (i = 0; i < num_channels; i++)
         {
-            max_dist = 0.0;
-            for (i = 0; i < num_channels; i++)
-            {
-                dist = (histogram_1[i] - histograms_2[i][y][x]).cwiseAbs().maxCoeff();
-                if (max_dist < dist)
-                    max_dist = dist;
-            }
-
-            for (i = 0; i < num_channels; i++)
-            {
-                vis_rgb_channels[i](y, x) = max_dist*255.0;
-            }
-
-            identity_score(y, x) = identity_score(y, x)*dist_func(max_dist);
+            vis_rgb_channels[i](y1, x1) = 0;
         }
+        vis_rgb_channels[0](y1, x1) = 255.0;
     }
 
-    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
-}
-
-void calculate_average_intensity(MatrixXd& intensity, int x0, int y0, int wx, int wy, double& average_intensity)
-{
-    int x, y;
-
-    int width = intensity.cols();
-    int height = intensity.rows();
-    average_intensity = 0.0;
-    int wsize = (2 * wx + 1)*(2 * wy + 1);
-
-    if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
-        return;
-
-    for (y = y0 - wy; y <= y0 + wy; y++) {
-        for (x = x0 - wx; x <= x0 + wx; x++) {
-            average_intensity += intensity(y, x);
-        }
-    }
-
-    average_intensity /= wsize;
-}
-
-void compare_average_intensities(double average_intensity_1, std::vector<std::vector<double>>& average_intensity_2, int num_channels, std::string vis_image_path, MatrixXd& identity_score)
-{
-    int i;
-    int x, y;
-    double dist;
-    double max_intensity;
-    MatrixXd vis_rgb_channels[3];
-    int height = average_intensity_2.size();
-    int width = average_intensity_2[0].size();
-
-    for (i = 0; i < num_channels; i++)
+    void compare_histograms(VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
     {
-        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
-    }
+        int i;
+        int x, y;
+        double dist, max_dist;
+        VectorXd hist1, hist2;
+        MatrixXd vis_rgb_channels[3];
+        int height = histograms_2[0].size();
+        int width = histograms_2[0][0].size();
 
-    for (y = 0; y < height; y++)
-    {
-        for (x = 0; x < width; x++)
+        for (i = 0; i < num_channels; i++)
         {
-            max_intensity = std::max(average_intensity_1, average_intensity_2[y][x]);
+            vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+        }
+
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
+            {
+                max_dist = 0.0;
+                for (i = 0; i < num_channels; i++)
+                {
+                    dist = (histogram_1[i] - histograms_2[i][y][x]).cwiseAbs().maxCoeff();
+                    if (max_dist < dist)
+                        max_dist = dist;
+                }
+
+                for (i = 0; i < num_channels; i++)
+                {
+                    vis_rgb_channels[i](y, x) = max_dist*255.0;
+                }
+
+                identity_score(y, x) = identity_score(y, x)*dist_func(max_dist);
+            }
+        }
+
+        DrawCorrespondingPoint(vis_rgb_channels, num_channels);
+        errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+    }
+
+    void calculate_average_intensity(MatrixXd& intensity, int x0, int y0, int wx, int wy, double& average_intensity)
+    {
+        int x, y;
+
+        int width = intensity.cols();
+        int height = intensity.rows();
+        average_intensity = 0.0;
+        int wsize = (2 * wx + 1)*(2 * wy + 1);
+
+        if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
+            return;
+
+        for (y = y0 - wy; y <= y0 + wy; y++) {
+            for (x = x0 - wx; x <= x0 + wx; x++) {
+                average_intensity += intensity(y, x);
+            }
+        }
+
+        average_intensity /= wsize;
+    }
+
+    void compare_average_intensities(double average_intensity_1, std::vector<std::vector<double>>& average_intensity_2, int num_channels, std::string vis_image_path, MatrixXd& identity_score)
+    {
+        int i;
+        int x, y;
+        double dist;
+        double max_intensity;
+        MatrixXd vis_rgb_channels[3];
+        int height = average_intensity_2.size();
+        int width = average_intensity_2[0].size();
+
+        for (i = 0; i < num_channels; i++)
+        {
+            vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+        }
+
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
+            {
+                max_intensity = std::max(average_intensity_1, average_intensity_2[y][x]);
 #define intensity_threshold 0.01
-            if (max_intensity < intensity_threshold)
-                dist = 0;
-            else
-                dist = abs(average_intensity_1 - average_intensity_2[y][x])/max_intensity;
+                if (max_intensity < intensity_threshold)
+                    dist = 0;
+                else
+                    dist = abs(average_intensity_1 - average_intensity_2[y][x]) / max_intensity;
 
-            for (i = 0; i < num_channels; i++)
-            {
-                vis_rgb_channels[i](y, x) = dist*255.0;
+                for (i = 0; i < num_channels; i++)
+                {
+                    vis_rgb_channels[i](y, x) = dist*255.0;
+                }
+
+                identity_score(y, x) = identity_score(y, x) * dist_func(dist);
             }
-
-            identity_score(y, x) = identity_score(y, x) * dist_func(dist);
         }
+
+        DrawCorrespondingPoint(vis_rgb_channels, num_channels);
+        errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
     }
 
-    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
-}
 
-
-void visualize_identity_score(MatrixXd& identity_score, int num_channels, std::string vis_image_path)
-{
-    int i;
-    int x, y;
-    double dist;
-    MatrixXd vis_rgb_channels[3];
-
-    int width = identity_score.cols();
-    int height = identity_score.rows();
-
-
-    for (i = 0; i < num_channels; i++)
+    void visualize_identity_score(MatrixXd& identity_score, int num_channels, std::string vis_image_path)
     {
-        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
-    }
+        int i;
+        int x, y;
+        double dist;
+        MatrixXd vis_rgb_channels[3];
 
-    double minCoeff, maxCoeff;
-    minCoeff = identity_score.minCoeff();
-    maxCoeff = identity_score.maxCoeff();
-    double probableCoeff = minCoeff + (maxCoeff - minCoeff)*0.1;
-    
-    for (y = 0; y < height; y++)
-    {
-        for (x = 0; x < width; x++)
+        int width = identity_score.cols();
+        int height = identity_score.rows();
+
+
+        for (i = 0; i < num_channels; i++)
         {
-            double score = identity_score(y, x);
-            if (score < probableCoeff)
+            vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+        }
+
+        double minCoeff, maxCoeff;
+        minCoeff = identity_score.minCoeff();
+        maxCoeff = identity_score.maxCoeff();
+        double probableCoeff = minCoeff + (maxCoeff - minCoeff)*0.1;
+
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
             {
-                vis_rgb_channels[0](y, x) = 255.0;
+                double score = identity_score(y, x);
+                if (score < probableCoeff)
+                {
+                    vis_rgb_channels[0](y, x) = 255.0;
+                }
+                else
+                {
+                    for (i = 0; i < num_channels; i++)
+                    {
+                        vis_rgb_channels[i](y, x) = identity_score(y, x) * 255.0;
+                    }
+                }
             }
-            else
+        }
+
+        errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+    }
+
+    void calculate_gradient(MatrixXd& rgb_channel, int x0, int y0, double& gradient)
+    {
+        int bin;
+        int x, y;
+        int wx = 1;
+        int wy = 1;
+
+        gradient = 0.0;
+        int width = rgb_channel.cols();
+        int height = rgb_channel.rows();
+
+        if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
+            return;
+
+        x = x0;
+        y = y0;
+
+        double dfdx =
+            (rgb_channel(y - 1, x + 1) - rgb_channel(y - 1, x - 1) +
+                rgb_channel(y, x + 1) - rgb_channel(y, x - 1) +
+                rgb_channel(y + 1, x + 1) - rgb_channel(y + 1, x - 1)) / 6.0;
+
+        double dfdy =
+            (rgb_channel(y + 1, x - 1) - rgb_channel(y - 1, x - 1) +
+                rgb_channel(y + 1, x) - rgb_channel(y - 1, x) +
+                rgb_channel(y + 1, x + 1) - rgb_channel(y - 1, x + 1)) / 6.0;
+
+        gradient = sqrt(dfdx*dfdx + dfdy*dfdy);
+    }
+
+    void compare_gradients(double gradient_1[], std::vector<std::vector<double>> gradient_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
+    {
+        int i;
+        int x, y;
+        double diff, max_diff;
+        double max_gradient;
+        MatrixXd vis_rgb_channels[3];
+        MatrixXd gradient_diff;
+        int height = gradient_2[0].size();
+        int width = gradient_2[0][0].size();
+
+        for (i = 0; i < num_channels; i++)
+        {
+            vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+            gradient_diff = MatrixXd::Zero(height, width);
+        }
+
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
+            {
+                max_diff = 0.0;
+                for (i = 0; i < num_channels; i++)
+                {
+                    max_gradient = std::max(gradient_1[i], gradient_2[i][y][x]);
+#define gradient_threshold 0.001
+                    if (max_gradient > gradient_threshold)
+                    {
+                        diff = abs(gradient_1[i] - gradient_2[i][y][x]) / max_gradient;
+                        if (max_diff < diff)
+                            max_diff = diff;
+                    }
+                }
+
+                gradient_diff(y, x) = max_diff;
+            }
+        }
+
+
+        double maxCoeff;
+        maxCoeff = gradient_diff.maxCoeff();
+        gradient_diff /= maxCoeff;
+
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
             {
                 for (i = 0; i < num_channels; i++)
                 {
-                    vis_rgb_channels[i](y, x) = identity_score(y, x) * 255.0;
+                    vis_rgb_channels[i](y, x) = gradient_diff(y, x)*255.0;
                 }
+
+                identity_score(y, x) = identity_score(y, x)*dist_func(gradient_diff(y, x));
             }
         }
-    }
 
-    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+        DrawCorrespondingPoint(vis_rgb_channels, num_channels);
+        errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
+    }
 }
 
-void calculate_gradient(MatrixXd& rgb_channel, int x0, int y0, double& gradient)
-{
-    int bin;
-    int x, y;
-    int wx = 1;
-    int wy = 1;
-
-    gradient = 0.0;
-    int width = rgb_channel.cols();
-    int height = rgb_channel.rows();
-
-    if (y0 < wy || y0 + wy >= height || x0 < wx || x0 + wx >= width)
-        return;
-
-    x = x0;
-    y = y0;
-
-    double dfdx = 
-        (rgb_channel(y - 1, x + 1) - rgb_channel(y - 1, x - 1) +
-        rgb_channel(y, x + 1) - rgb_channel(y, x - 1) +
-        rgb_channel(y + 1, x + 1) - rgb_channel(y + 1, x - 1)) / 6.0;
-
-    double dfdy =
-        (rgb_channel(y + 1, x - 1) - rgb_channel(y - 1, x - 1) +
-            rgb_channel(y + 1, x) - rgb_channel(y - 1, x) +
-            rgb_channel(y + 1, x + 1) - rgb_channel(y - 1, x + 1)) / 6.0;
-
-    gradient = sqrt(dfdx*dfdx + dfdy*dfdy);
-}
-
-void compare_gradients(double gradient_1[], std::vector<std::vector<double>> gradient_2[], int num_channels, std::string vis_image_path, MatrixXd& identity_score)
-{
-    int i;
-    int x, y;
-    double diff, max_diff;
-    double max_gradient;
-    MatrixXd vis_rgb_channels[3];
-    MatrixXd gradient_diff;
-    int height = gradient_2[0].size();
-    int width = gradient_2[0][0].size();
-
-    for (i = 0; i < num_channels; i++)
-    {
-        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
-        gradient_diff = MatrixXd::Zero(height, width);
-    }
-
-    for (y = 0; y < height; y++)
-    {
-        for (x = 0; x < width; x++)
-        {
-            max_diff = 0.0;
-            for (i = 0; i < num_channels; i++)
-            {
-                max_gradient = std::max(gradient_1[i], gradient_2[i][y][x]);
-#define gradient_threshold 0.001
-                if (max_gradient > gradient_threshold)
-                {
-                    diff = abs(gradient_1[i] - gradient_2[i][y][x]) / max_gradient;
-                    if (max_diff < diff)
-                        max_diff = diff;
-                }
-            }
-
-            gradient_diff(y, x) = max_diff;
-        }
-    }
-
-
-    double maxCoeff;
-    maxCoeff = gradient_diff.maxCoeff();
-    gradient_diff /= maxCoeff;
-
-    for (y = 0; y < height; y++)
-    {
-        for (x = 0; x < width; x++)
-        {
-            for (i = 0; i < num_channels; i++)
-            {
-                vis_rgb_channels[i](y, x) = gradient_diff(y,x)*255.0;
-            }
-
-            identity_score(y, x) = identity_score(y, x)*dist_func(gradient_diff(y, x));
-        }
-    }
-
-    errno_t err = write_png_file(vis_image_path.c_str(), vis_rgb_channels, 3);
-}
+using namespace F_D;
 
 int main(int argc, char **argv)
 {
@@ -332,12 +353,13 @@ int main(int argc, char **argv)
     int num_bins;
     int x, y;
 
-/*
+    /*
     Command line arguments:
--num_bins 10 -wx 3 -wy 3 -x0 75 -y0 37 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
-*/
+    -x0 78 -y0 12 -x1 32 -y1 8 -num_bins 10 -wx 3 -wy 3 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
+    -num_bins 10 -wx 3 -wy 3 -x0 78 -y0 12 -x1 32 -y1 8 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
+    */
     int i = 1;
-    while(i < argc)
+    while (i < argc)
     {
         arg = argv[i];
         if (arg == "-i1")
@@ -383,6 +405,18 @@ int main(int argc, char **argv)
         {
             i++;
             y0 = atoi(argv[i]);
+        }
+
+        if (arg == "-x1")
+        {
+            i++;
+            F_D::x1 = atoi(argv[i]);
+        }
+
+        if (arg == "-y1")
+        {
+            i++;
+            F_D::y1 = atoi(argv[i]);
         }
 
         if (arg == "-wx")
