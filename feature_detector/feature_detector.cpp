@@ -8,6 +8,8 @@
 #include <vector>
 #include <iostream>
 
+// version 5-24-18-2-03
+
 // coordinates of the corresponidng point on the second image
 void usage(void)
 {
@@ -92,6 +94,10 @@ void calculate_histogram(param_context& pc, MatrixXd& rgb_channel, int x0, int y
 void DrawCorrespondingPoint(param_context& pc, MatrixXd vis_rgb_channels[])
 {
     int i;
+
+    if (!pc.draw_corr_point)
+        return;
+
     for (i = 0; i < pc.num_channels; i++)
     {
         vis_rgb_channels[i](pc.y1, pc.x1) = 0;
@@ -225,7 +231,7 @@ void visualize_identity_score(param_context& pc, MatrixXd& identity_score, int x
     double minCoeff, maxCoeff;
     minCoeff = identity_score.minCoeff();
     maxCoeff = identity_score.maxCoeff();
-    double candidateCoeff = minCoeff + (maxCoeff - minCoeff)*0.1;
+    double candidateCoeff = minCoeff + (maxCoeff - minCoeff)*pc.cand_coef;
     int candidateCoeffCnt = 0;
     for (y = 0; y < height; y++)
     {
@@ -308,12 +314,43 @@ void compare_gradients(param_context& pc, double gradient_1[], std::vector<std::
     int x, y;
     double diff, max_diff;
     double max_gradient;
+    double maxCoeff;
+
     MatrixXd vis_rgb_channels[3];
     MatrixXd gradient_diff;
     int height = gradient_2[0].size();
     int width = gradient_2[0][0].size();
 
     assert(pc.num_channels == 3);
+
+    if (pc.vis_gradient_image_path.length() > 0)
+    {
+        MatrixXd vis_gradient[3];
+        MatrixXd max_gradient = MatrixXd::Zero(height, width);
+
+        for (y = 0; y < height; y++)
+        {
+            for (x = 0; x < width; x++)
+            {
+                double max_val = 0.0;
+                for (i = 0; i < pc.num_channels; i++)
+                {
+                    if (max_val < gradient_2[i][y][x])
+                        max_val = gradient_2[i][y][x];
+                }
+
+                max_gradient(y,x) = max_val;
+            }
+        }
+        maxCoeff = max_gradient.maxCoeff();
+        max_gradient /= maxCoeff;
+        max_gradient *= 255.0;
+        for (i = 0; i < pc.num_channels; i++)
+        {
+            vis_gradient[i] = max_gradient;
+        }
+        errno_t err = write_png_file(pc.vis_gradient_image_path.c_str(), vis_gradient, 3);
+    }
 
     for (i = 0; i < pc.num_channels; i++)
     {
@@ -342,8 +379,6 @@ void compare_gradients(param_context& pc, double gradient_1[], std::vector<std::
         }
     }
 
-
-    double maxCoeff;
     maxCoeff = gradient_diff.maxCoeff();
     gradient_diff /= maxCoeff;
 
@@ -364,7 +399,7 @@ void compare_gradients(param_context& pc, double gradient_1[], std::vector<std::
         return;
 
     DrawCorrespondingPoint(pc, vis_rgb_channels);
-    errno_t err = write_png_file(pc.gradient_image_path.c_str(), vis_rgb_channels, 3);
+    errno_t err = write_png_file(pc.gradient_diff_image_path.c_str(), vis_rgb_channels, 3);
 }
 
 int main(int argc, char **argv)
