@@ -63,6 +63,20 @@ void preprocess_channels(param_context& pc, MatrixXd rgb_channels[], MatrixXd& i
     }
 }
 
+void DrawCorrespondingPoint(param_context& pc, MatrixXd vis_rgb_channels[])
+{
+    int i;
+
+    if (!pc.draw_corr_point)
+        return;
+
+    for (i = 0; i < pc.num_channels; i++)
+    {
+        vis_rgb_channels[i](pc.y1, pc.x1) = 0;
+    }
+    vis_rgb_channels[0](pc.y1, pc.x1) = 255.0;
+}
+
 void calculate_histogram(param_context& pc, MatrixXd& rgb_channel, int x0, int y0, VectorXd& hist)
 {
     int bin;
@@ -90,27 +104,11 @@ void calculate_histogram(param_context& pc, MatrixXd& rgb_channel, int x0, int y
 
 }
 
-
-void DrawCorrespondingPoint(param_context& pc, MatrixXd vis_rgb_channels[])
-{
-    int i;
-
-    if (!pc.draw_corr_point)
-        return;
-
-    for (i = 0; i < pc.num_channels; i++)
-    {
-        vis_rgb_channels[i](pc.y1, pc.x1) = 0;
-    }
-    vis_rgb_channels[0](pc.y1, pc.x1) = 255.0;
-}
-
 void compare_histograms(param_context& pc, VectorXd histogram_1[], std::vector<std::vector<VectorXd>> histograms_2[], MatrixXd& identity_score)
 {
     int i;
     int x, y;
     double dist, max_dist;
-    VectorXd hist1, hist2;
     MatrixXd vis_rgb_channels[3];
     int height = histograms_2[0].size();
     int width = histograms_2[0][0].size();
@@ -402,6 +400,69 @@ void compare_gradients(param_context& pc, double gradient_1[], std::vector<std::
     errno_t err = write_png_file(pc.gradient_diff_image_path.c_str(), vis_rgb_channels, 3);
 }
 
+void calculate_vline(param_context& pc, MatrixXd& rgb_channel, int x0, int y0, VectorXd& vline)
+{
+    int b;
+    int x, y;
+
+    vline = VectorXd::Zero(2*pc.wy+1);
+    int width = rgb_channel.cols();
+    int height = rgb_channel.rows();
+
+    if (y0 < pc.wy || y0 + pc.wy >= height)
+        return;
+
+    x = x0;
+    b = 0;
+    for (y = y0 - pc.wy; y <= y0 + pc.wy; y++) {
+        vline(b) = rgb_channel(y, x);
+        b++;
+    }
+}
+
+void compare_vlines(param_context& pc, VectorXd vline_1[], std::vector<std::vector<VectorXd>> vlines_2[], MatrixXd& identity_score)
+{
+    int i;
+    int x, y;
+    double dist, max_dist;
+    MatrixXd vis_rgb_channels[3];
+    int height = vlines_2[0].size();
+    int width = vlines_2[0][0].size();
+
+    for (i = 0; i < pc.num_channels; i++)
+    {
+        vis_rgb_channels[i] = MatrixXd::Zero(height, width);
+    }
+
+    for (y = 0; y < height; y++)
+    {
+        for (x = 0; x < width; x++)
+        {
+            max_dist = 0.0;
+            for (i = 0; i < pc.num_channels; i++)
+            {
+                dist = (vline_1[i] - vlines_2[i][y][x]).cwiseAbs().maxCoeff();
+                if (max_dist < dist)
+                    max_dist = dist;
+            }
+
+            for (i = 0; i < pc.num_channels; i++)
+            {
+                vis_rgb_channels[i](y, x) = max_dist*255.0;
+            }
+
+            identity_score(y, x) = identity_score(y, x)*dist_func(max_dist);
+        }
+    }
+
+    if (pc.batch_mode)
+        return;
+
+    DrawCorrespondingPoint(pc, vis_rgb_channels);
+    errno_t err = write_png_file(pc.vline_diff_image_path.c_str(), vis_rgb_channels, 3);
+}
+
+
 int main(int argc, char **argv)
 {
     param_context pc;
@@ -435,6 +496,28 @@ int main(int argc, char **argv)
 
             identity_score = MatrixXd::Ones(height, width);
 
+            // vertical line statistic
+            VectorXd vline_1[3];
+            std::vector<std::vector<VectorXd>> vlines_2[3];
+
+            for (i = 0; i < 3; i++)
+            {
+                calculate_vline(pc, rgb_channels_1[i], xb, yb, vline_1[i]);
+            }
+
+            for (i = 0; i < 3; i++)
+            {
+                vlines_2[i].resize(height);
+                for (y = 0; y < height; y++) {
+                    vlines_2[i][y].resize(width);
+                    for (x = 0; x < width; x++) {
+                        calculate_vline(pc, rgb_channels_2[i], x, y, vlines_2[i][y][x]);
+                    }
+                }
+            }
+
+            compare_vlines(pc, vline_1, vlines_2, identity_score);
+#if 0
             // histogram statistic
             VectorXd histogram_1[3];
             std::vector<std::vector<VectorXd>> histograms_2[3];
@@ -494,7 +577,7 @@ int main(int argc, char **argv)
                 }
             }
             compare_average_intensities(pc, average_intensity_1, average_intensity_2, identity_score);
-
+#endif
             visualize_identity_score(pc, identity_score, xb, yb);
 
             if (!pc.batch_mode)
