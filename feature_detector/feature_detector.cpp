@@ -462,39 +462,44 @@ void compare_vlines(param_context& pc, VectorXd vline_1[], std::vector<std::vect
     errno_t err = write_png_file(pc.vline_diff_image_path.c_str(), vis_rgb_channels, 3);
 }
 
-bool compare_windows(param_context& pc, MatrixXd rgb_channels_1[], MatrixXd rgb_channels_2[], int x0, int y0, int x1, int y1, MatrixXd& region)
+bool compare_windows(param_context& pc, MatrixXd rgb_channels_1[], MatrixXd& intensity_1, MatrixXd rgb_channels_2[], MatrixXd& intensity_2, int x0, int y0, int x1, int y1)
 {
     int x, y, c;
 
-    double max_diff[3] = { 0.03, 0.03, 0.03 };
+    double avg, diff;
+    double max_diff = 0.35;
     int width = rgb_channels_1[0].cols();
     int height = rgb_channels_1[0].rows();
-    region = MatrixXd::Ones(2*pc.wy+1, 2 * pc.wx + 1);
 
     if (y0 < pc.wy || y0 + pc.wy >= height || x0 < pc.wx || x0 + pc.wx >= width)
         return false;
     if (y1 < pc.wy || y1 + pc.wy >= height || x1 < pc.wx || x1 + pc.wx >= width)
         return false;
 
-    int num_elems = (2 * pc.wy + 1)*(2 * pc.wx + 1);
-    int num_non_zero_elems = num_elems;
     for (y = - pc.wy; y <= pc.wy; y++) {
         for (x = - pc.wx; x <= pc.wx; x++) {
-            for (c = 0; c < pc.num_channels; c++) {
-                if (abs(rgb_channels_1[c](y + y0, x + x0) - rgb_channels_2[c](y + y1, x + x1)) > max_diff[c])
-                {
-                    region(y + pc.wy, x + pc.wx) = 0;
-                    num_non_zero_elems--;
-                    break;
+                for (c = 0; c < pc.num_channels; c++) {
+                    avg = (rgb_channels_1[c](y + y0, x + x0) + rgb_channels_2[c](y + y1, x + x1))/2;
+                    diff = rgb_channels_1[c](y + y0, x + x0) - rgb_channels_2[c](y + y1, x + x1);
+                    if (avg > 0 && diff / avg > max_diff)
+                    {
+                        return false;
+                    }
                 }
-            }
+
+                avg = (intensity_1(y + y0, x + x0) + intensity_2(y + y1, x + x1))/2;
+                diff = abs(intensity_1(y + y0, x + x0) - intensity_2(y + y1, x + x1));
+                if (avg > 0 && diff / avg > max_diff)
+                {
+                    return false;
+                }
         }
     }
 
-    return ((double)num_non_zero_elems / (double)num_elems > 0.5);
+    return true;
 }
 
-void compare_images(param_context& pc, MatrixXd rgb_channels_1[], MatrixXd rgb_channels_2[], MatrixXd& identity_score)
+void compare_images(param_context& pc, MatrixXd rgb_channels_1[], MatrixXd& intensity_1,  MatrixXd rgb_channels_2[], MatrixXd& intensity_2, MatrixXd& identity_score)
 {
     int i;
     int x, y;
@@ -512,7 +517,7 @@ void compare_images(param_context& pc, MatrixXd rgb_channels_1[], MatrixXd rgb_c
     {
         for (x = 0; x < width; x++)
         {
-            if (compare_windows(pc, rgb_channels_1, rgb_channels_2, pc.x0, pc.y0, x, y, region))
+            if (compare_windows(pc, rgb_channels_1, intensity_1, rgb_channels_2, intensity_2, pc.x0, pc.y0, x, y))
             {
                 for (i = 0; i < pc.num_channels; i++)
                 {
@@ -566,7 +571,7 @@ int main(int argc, char **argv)
 
             identity_score = MatrixXd::Ones(height, width);
 
-            compare_images(pc, rgb_channels_1, rgb_channels_2, identity_score);
+            compare_images(pc, rgb_channels_1, intensity_1, rgb_channels_2, intensity_2, identity_score);
 #if 0
             // vertical line statistic
             VectorXd vline_1[3];
