@@ -467,7 +467,7 @@ bool compare_windows(param_context& pc, MatrixXd rgb_channels_1[], MatrixXd& int
     int x, y, c;
 
     double avg, diff;
-    double max_diff = 0.35;
+    double max_diff = pc.max_diff;   // 0.15; // 0.3;  // 0.28; 
     int width = rgb_channels_1[0].cols();
     int height = rgb_channels_1[0].rows();
 

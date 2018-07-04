@@ -17,6 +17,7 @@ public:
         draw_corr_point = true;
         wx = 3;
         wy = 3;
+        max_diff = 0.1;
     }
 
     /*
@@ -148,6 +149,13 @@ public:
                 i++;
                 num_bins = atoi(argv[i]);
             }
+
+            if (arg == "-max_diff")
+            {
+                i++;
+                max_diff = atof(argv[i]);
+            }
+
             i++;
         }
     }
@@ -173,4 +181,5 @@ public:
     int num_channels;
     double cand_coef;
     bool draw_corr_point;
+    double max_diff;
 };
