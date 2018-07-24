@@ -9,6 +9,27 @@
 
 using namespace std;
 
+class c_range_key
+{
+public:
+    bool operator() (const c_range_key& lhs, const c_range_key& rhs) const
+    {
+        if (lhs.range_num[0] < rhs.range_num[0])
+            return true;
+        if (lhs.range_num[0] > rhs.range_num[0])
+            return false;
+        if (lhs.range_num[1] < rhs.range_num[1])
+            return true;
+        if (lhs.range_num[1] > rhs.range_num[1])
+            return false;
+        if (lhs.range_num[2] < rhs.range_num[2])
+            return true;
+        return false;
+    };
+
+    int range_num[3];
+};
+
 class c_point
 {
 public:
@@ -72,7 +93,6 @@ public:
 class c_point_set_correspondence
 {
 public:
-    int statistic_range[3];
     c_point_set* point_set1;
     c_point_set* point_set2;
 };
@@ -262,7 +282,7 @@ public:
         }
     }
 
-    void calculate_statistic_point_sets(const MatrixXd statistic_channels[], std::map<int[3], c_point_set>& point_set_map)
+    void calculate_statistic_point_sets(const MatrixXd statistic_channels[], std::map<c_range_key, c_point_set, c_range_key>& point_set_map)
     {
         int x, y;
 
@@ -284,7 +304,9 @@ public:
                     }
                 }
 
-                c_point_set& ps = point_set_map[range];
+                c_range_key range_key;
+                memcpy(range_key.range_num, range, sizeof(range));
+                c_point_set& ps = point_set_map[range_key];
                 ps.add_point(pnt);
             }
         }
@@ -317,8 +339,8 @@ public:
             range_length[c] = (maxCoeff_1[c] - minCoeff_1[c]) / pc.num_chan_ranges;
         }
 
-        std::map<int[3], c_point_set> point_sets_1;
-        std::map<int[3], c_point_set> point_sets_2;
+        std::map<c_range_key, c_point_set, c_range_key> point_sets_1;
+        std::map<c_range_key, c_point_set, c_range_key> point_sets_2;
 
         calculate_statistic_point_sets(statistic_channels_1, point_sets_1);
         calculate_statistic_point_sets(statistic_channels_2, point_sets_2);
@@ -339,7 +361,6 @@ public:
                 c_point_set_correspondence psc;
                 psc.point_set1 = ps1;
                 psc.point_set2 = ps2;
-                memcpy(psc.statistic_range, it->first, sizeof(psc.statistic_range));
                 correspondences.push_back(psc);
             }
         }
