@@ -8,6 +8,8 @@
 #include <vector>
 #include <iostream>
 
+#include "image_correspondence.h"
+
 // version 5-24-18-2-03
 
 // coordinates of the corresponidng point on the second image
@@ -549,6 +551,9 @@ int main(int argc, char **argv)
     MatrixXd identity_score;
 
     pc.get_params_from_command_line(argc, argv);
+
+    c_image_correspondence image_correspondence(pc);
+    image_correspondence.calculate_image_correspondence();
 
     read_png_file(pc.image_path[0].c_str(), rgb_channels_1, pc.num_channels);
     read_png_file(pc.image_path[1].c_str(), rgb_channels_2, pc.num_channels);

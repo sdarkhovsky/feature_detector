@@ -18,6 +18,8 @@ public:
         wx = 3;
         wy = 3;
         max_diff = 0.1;
+        num_chan_ranges = 10;
+        statistic_localization = 0.1;
     }
 
     /*
@@ -182,4 +184,6 @@ public:
     double cand_coef;
     bool draw_corr_point;
     double max_diff;
+    int num_chan_ranges;
+    double statistic_localization;
 };
