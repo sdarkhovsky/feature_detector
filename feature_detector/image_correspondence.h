@@ -69,8 +69,7 @@ public:
         diam_x = max_x - min_x;
         diam_y = max_y - min_y;
 
-        center_x = (min_x + max_x) / 2;
-        center_y = (min_y + max_y) / 2;
+        center << (min_x + max_x) / 2, (min_y + max_y) / 2, 1;
     }
 
     void add_point(c_point& pnt)
@@ -87,7 +86,7 @@ public:
     double min_x, max_x;
     double min_y, max_y;
     double diam_x, diam_y;
-    double center_x, center_y;
+    Vector3d center;   // homogeneous
 };
 
 class c_point_set_correspondence
@@ -95,6 +94,7 @@ class c_point_set_correspondence
 public:
     c_point_set* point_set1;
     c_point_set* point_set2;
+    double F_err;
 };
 
 #if 0
@@ -317,9 +317,107 @@ public:
         }
     }
 
-    void find_RT_transformation(std::vector <c_point_set_correspondence>& correspondences)
+    void check_correspondences(std::vector <c_point_set_correspondence>& correspondences, double& min_F_err_ratio, MatrixXd& min_F)
     {
+        std::default_random_engine generator;
+        std::uniform_int_distribution<unsigned int> distribution(0, correspondences.size()-1);
+        std::vector<c_point_set_correspondence> sel_correspondences;
+        // calculate the fundamental matrix using normalized 8-point algorithm and ransac, see Hartley, Zisserman book, algorithm 11.4
+        VectorXd centroid1, centroid2;
+        double rms1, rms2;
+        min_F_err_ratio = 1;
+        min_F = MatrixXd::Zero(3, 3);
 
+        int num_ransack_iterations = 20;
+        for (int rans_i = 0; rans_i < num_ransack_iterations; rans_i++)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                sel_correspondences.push_back(correspondences[distribution(generator)]);
+            }
+
+            centroid1 = VectorXd::Zero(3);
+            centroid2 = VectorXd::Zero(3);
+            for (int i = 0; i < 8; i++)
+            {
+                centroid1 += sel_correspondences[i].point_set1->center;
+                centroid2 += sel_correspondences[i].point_set2->center;
+            }
+            centroid1 /= 8;
+            centroid2 /= 8;
+
+            rms1 = 0;
+            rms2 = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                rms1 += (sel_correspondences[i].point_set1->center - centroid1).squaredNorm();
+                rms2 += (sel_correspondences[i].point_set2->center - centroid2).squaredNorm();
+            }
+
+            double scale1, scale2;
+            scale1 = rms1*sqrt(2);
+            scale2 = rms2*sqrt(2);
+
+            MatrixXd T1(3, 3);
+            T1 << scale1, 0, -scale1*centroid1(0),
+                0, scale1, -scale1*centroid1(1),
+                0, 0, 1;
+
+            MatrixXd T2(3, 3);
+            T1 << scale2, 0, -scale2*centroid2(0),
+                0, scale2, -scale2*centroid2(1),
+                0, 0, 1;
+
+            VectorXd normalized_pnts1[8];
+            VectorXd normalized_pnts2[8];
+            for (int i = 0; i < 8; i++)
+            {
+                normalized_pnts1[i] = T1*sel_correspondences[i].point_set1->center;
+                normalized_pnts2[i] = T2*sel_correspondences[i].point_set2->center;
+            }
+
+            MatrixXd A = MatrixXd::Zero(8, 8);
+            for (int i = 0; i < 8; i++)
+            {
+                A(i, 0) = normalized_pnts1[i](1)*normalized_pnts2[i](1);
+                A(i, 1) = normalized_pnts1[i](1)*normalized_pnts2[i](0);
+                A(i, 2) = normalized_pnts1[i](1);
+
+                A(i, 3) = normalized_pnts1[i](0)*normalized_pnts2[i](1);
+                A(i, 4) = normalized_pnts1[i](0)*normalized_pnts2[i](0);
+                A(i, 5) = normalized_pnts1[i](0);
+
+                A(i, 6) = normalized_pnts2[i](1);
+                A(i, 7) = normalized_pnts2[i](0);
+                A(i, 8) = 1;
+            }
+
+            JacobiSVD<MatrixXd> svd(A, ComputeThinU | ComputeThinV);
+            auto& V = svd.matrixV();
+            VectorXd vF = V.col(V.cols() - 1);
+            MatrixXd F(3, 3);
+            F << vF(0), vF(1), vF(2),
+                vF(3), vF(4), vF(5),
+                vF(6), vF(7), vF(8);
+            F = T1.transpose()*F*T2;
+            F.normalize();
+
+            double  F_err_thresh = 0.5;
+            int F_err_count = 0;
+            for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
+            {
+                it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
+                it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
+                if (it->F_err > F_err_thresh)
+                    F_err_count++;
+            }
+            double F_err_ratio = (double)F_err_count / (double)correspondences.size();
+            if (F_err_ratio <= min_F_err_ratio)
+            {
+                min_F_err_ratio = F_err_ratio;
+                min_F = F;
+            }
+        }
     }
 
     void calculate_image_correspondence()
@@ -365,8 +463,9 @@ public:
             }
         }
 
-        // filter correspondences with RANSAC
-        find_RT_transformation(correspondences);
+        double min_F_err_ratio;
+        MatrixXd min_F;
+        check_correspondences(correspondences, min_F_err_ratio, min_F);
 #if 0
         while (true)
         {
