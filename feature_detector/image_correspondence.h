@@ -238,27 +238,23 @@ public:
 
     void calculate_linear_statistic_parameters(int wx, int wy, MatrixXd& params)
     {
-        std::default_random_engine generator;
         std::uniform_real_distribution<double> distribution(-1.0, 1.0);
         int wsize = (2 * wx + 1)*(2 * wy + 1);
 
         params = MatrixXd::Zero(2*wy+1, 2*wx+1);
-        double sum = 0.0;
         for (int i1 = -wy; i1 <= wy; i1++)
         {
             for (int i2 = -wx; i2 <= wx; i2++)
             {
                 if (i1*i1 + i2*i2 <= wsize*wsize)
                 {
-                    params(i1, i2) = distribution(generator);
-                    if (i1 != 0 || i2 != 0)
-                        sum += params(i1, i2);
+                    params(i1+wy, i2+wx) = distribution(generator);
                 }
             }
         }
 
         // make total sum 0
-        params(0, 0) = - sum;
+        params(wy, wx) = - (params.sum() - params(wy, wx));
     }
 
     void calculate_image_statistic(const MatrixXd& rgb_channel, const MatrixXd& linear_statistic_parameters, MatrixXd& statistic)
@@ -319,7 +315,7 @@ public:
         }
     }
 
-    void check_correspondences(std::vector <c_point_set_correspondence>& correspondences, MatrixXd& best_F, double& pass_ratio)
+    void check_correspondences(MatrixXd& best_F, double& pass_ratio)
     {
         std::default_random_engine generator;
         std::uniform_int_distribution<unsigned int> distribution(0, correspondences.size()-1);
@@ -378,7 +374,7 @@ public:
                 normalized_pnts2[i] = T2*sel_correspondences[i].point_set2->center;
             }
 
-            MatrixXd A = MatrixXd::Zero(8, 8);
+            MatrixXd A = MatrixXd::Zero(9, 9);
             for (int i = 0; i < 8; i++)
             {
                 A(i, 0) = normalized_pnts1[i](1)*normalized_pnts2[i](1);
@@ -426,7 +422,7 @@ public:
     {
         MatrixXd linear_statistic_parameters;
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < pc.learn_statistic_iterations; i++)
         {
             std::cout << "learn_statistic_parameters iteration=" << i << "\n";
             calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
@@ -434,6 +430,38 @@ public:
         }
     }
 
+    void show_correspondences()
+    {
+        MatrixXd vis_rgb_channels[3];
+        int gap = width / 10;
+        for (int i = 0; i < pc.num_channels; i++)
+        {
+            vis_rgb_channels[i] = MatrixXd::Zero(height, 2*width+gap);
+            vis_rgb_channels[i].block(0, 0, height, width) = rgb_channels_1[i];
+            vis_rgb_channels[i].block(0, width+gap, height, width) = rgb_channels_2[i];
+        }
+
+        for (auto it = correspondences.begin(); it != correspondences.end(); it++)
+        {
+            int x1, y1, x2, y2;
+            x1 = it->point_set1->center(0);
+            y1 = it->point_set1->center(1);
+            x2 = it->point_set2->center(0) + width + gap;
+            y2 = it->point_set2->center(1);
+
+            double rgb[3] = { 0,0,0 };
+
+            for (int x = x1; x <= x2; x++)
+            {
+                int y = y1 + (x - x1)*(y2 - y1) / (x2 - x1);
+                for (int i = 0; i < pc.num_channels; i++)
+                {
+                    vis_rgb_channels[i](y, x) = rgb[i];
+                }
+            }
+        }
+        errno_t err = write_png_file(pc.correspondence_image_path.c_str(), vis_rgb_channels, 3);
+    }
 
     void calculate_image_correspondence(MatrixXd& linear_statistic_parameters)
     {
@@ -455,8 +483,10 @@ public:
         calculate_statistic_point_sets(statistic_channels_1, point_sets_1);
         calculate_statistic_point_sets(statistic_channels_2, point_sets_2);
 
+        std::cout << "point_sets_1 size=" << point_sets_1.size() << "point_sets_2 size=" << point_sets_2.size() << "\n";
+
         // filter corresponence sets by set size
-        std::vector <c_point_set_correspondence> correspondences;
+        correspondences.clear();
         int statistic_localization_x = width*pc.statistic_localization;
         int statistic_localization_y = height*pc.statistic_localization;
         for (auto it = point_sets_1.begin(); it != point_sets_1.end(); ++it)
@@ -477,9 +507,14 @@ public:
 
         double pass_ratio;
         MatrixXd best_F;
-        check_correspondences(correspondences, best_F, pass_ratio);
+        check_correspondences(best_F, pass_ratio);
         double pass_ratio_thresh = std::min(4 * 8, (int)correspondences.size()) / correspondences.size();  // 8 are fit automatically when F is selected
-        if (pass_ratio > pass_ratio_thresh)
+
+        std::cout << "correspondences size=" << correspondences.size() << "pass_ratio_thresh=" << pass_ratio_thresh << "pass_ratio=" << pass_ratio << "\n";
+
+        show_correspondences();
+
+        if (pass_ratio >= pass_ratio_thresh)
         {
             good_statistic_parameters.push_back(linear_statistic_parameters);
             good_statistic_pass_ratio.push_back(pass_ratio);
@@ -501,6 +536,9 @@ public:
         }
 #endif
     }
+
+    std::vector <c_point_set_correspondence> correspondences;
+    std::default_random_engine generator;
 
     int width;
     int height;

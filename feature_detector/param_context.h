@@ -19,7 +19,8 @@ public:
         wy = 3;
         max_diff = 0.1;
         num_chan_ranges = 10;
-        statistic_localization = 0.1;
+        statistic_localization = 0.2;
+        learn_statistic_iterations = 10;
     }
 
     /*
@@ -98,6 +99,12 @@ public:
                 windows_diff_image_path = argv[i];
             }
 
+            if (arg == "-ocor")
+            {
+                i++;
+                correspondence_image_path = argv[i];
+            }
+
             if (arg == "-ovline")
             {
                 i++;
@@ -172,6 +179,7 @@ public:
     std::string histogram_diff_image_path;
     std::string vline_diff_image_path;
     std::string windows_diff_image_path;
+    std::string correspondence_image_path;
     
     int x0;  // a point of the image1 for which correspondence is calculated in the image2
     int y0;
@@ -186,4 +194,5 @@ public:
     double max_diff;
     int num_chan_ranges;
     double statistic_localization;
+    int learn_statistic_iterations;
 };
