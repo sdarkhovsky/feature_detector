@@ -553,7 +553,7 @@ int main(int argc, char **argv)
     pc.get_params_from_command_line(argc, argv);
 
     c_image_correspondence image_correspondence(pc);
-    image_correspondence.calculate_image_correspondence();
+    image_correspondence.learn_statistic_parameters();
 
     read_png_file(pc.image_path[0].c_str(), rgb_channels_1, pc.num_channels);
     read_png_file(pc.image_path[1].c_str(), rgb_channels_2, pc.num_channels);

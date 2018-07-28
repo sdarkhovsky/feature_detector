@@ -317,7 +317,7 @@ public:
         }
     }
 
-    void check_correspondences(std::vector <c_point_set_correspondence>& correspondences, double& min_F_err_ratio, MatrixXd& min_F)
+    void check_correspondences(std::vector <c_point_set_correspondence>& correspondences, MatrixXd& best_F, double& pass_ratio)
     {
         std::default_random_engine generator;
         std::uniform_int_distribution<unsigned int> distribution(0, correspondences.size()-1);
@@ -325,9 +325,9 @@ public:
         // calculate the fundamental matrix using normalized 8-point algorithm and ransac, see Hartley, Zisserman book, algorithm 11.4
         VectorXd centroid1, centroid2;
         double rms1, rms2;
-        min_F_err_ratio = 1;
-        min_F = MatrixXd::Zero(3, 3);
-
+        best_F = MatrixXd::Zero(3, 3);
+        pass_ratio = 0;
+        
         int num_ransack_iterations = 20;
         for (int rans_i = 0; rans_i < num_ransack_iterations; rans_i++)
         {
@@ -403,28 +403,37 @@ public:
             F.normalize();
 
             double  F_err_thresh = 0.5;
-            int F_err_count = 0;
+            int pass_count = 0;
             for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
             {
                 it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
                 it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
-                if (it->F_err > F_err_thresh)
-                    F_err_count++;
+                if (it->F_err < F_err_thresh)
+                    pass_count++;
             }
-            double F_err_ratio = (double)F_err_count / (double)correspondences.size();
-            if (F_err_ratio <= min_F_err_ratio)
+            double cur_pass_ratio = (double)pass_count / (double)correspondences.size();
+            if (cur_pass_ratio > pass_ratio)
             {
-                min_F_err_ratio = F_err_ratio;
-                min_F = F;
+                pass_ratio = cur_pass_ratio;
+                best_F = F;
             }
         }
     }
 
-    void calculate_image_correspondence()
+    void learn_statistic_parameters()
     {
         MatrixXd linear_statistic_parameters;
-        calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
 
+        for (int i = 0; i < 100; i++)
+        {
+            calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
+            calculate_image_correspondence(linear_statistic_parameters);
+        }
+    }
+
+
+    void calculate_image_correspondence(MatrixXd& linear_statistic_parameters)
+    {
         MatrixXd statistic_channels_1[3];
         MatrixXd statistic_channels_2[3];
 
@@ -463,9 +472,15 @@ public:
             }
         }
 
-        double min_F_err_ratio;
-        MatrixXd min_F;
-        check_correspondences(correspondences, min_F_err_ratio, min_F);
+        double pass_ratio;
+        MatrixXd best_F;
+        check_correspondences(correspondences, best_F, pass_ratio);
+        double pass_ratio_thresh = std::min(4 * 8, (int)correspondences.size()) / correspondences.size();  // 8 are fit automatically when F is selected
+        if (pass_ratio > pass_ratio_thresh)
+        {
+            good_statistic_parameters.push_back(linear_statistic_parameters);
+            good_statistic_pass_ratio.push_back(pass_ratio);
+        }
 #if 0
         while (true)
         {
@@ -490,6 +505,9 @@ public:
     param_context pc;
     MatrixXd rgb_channels_1[3];
     MatrixXd rgb_channels_2[3];
+
+    vector <MatrixXd> good_statistic_parameters;
+    vector <double> good_statistic_pass_ratio;
 
     double minCoeff_1[3], maxCoeff_1[3], range_length[3];
 #if 0
