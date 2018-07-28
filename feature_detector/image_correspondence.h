@@ -6,6 +6,8 @@
 #include <vector>
 #include <map>
 #include <random>
+#include <iostream>
+
 
 using namespace std;
 
@@ -426,6 +428,7 @@ public:
 
         for (int i = 0; i < 100; i++)
         {
+            std::cout << "learn_statistic_parameters iteration=" << i << "\n";
             calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
             calculate_image_correspondence(linear_statistic_parameters);
         }
