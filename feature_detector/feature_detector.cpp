@@ -558,6 +558,16 @@ int main(int argc, char **argv)
     read_png_file(pc.image_path[0].c_str(), rgb_channels_1, pc.num_channels);
     read_png_file(pc.image_path[1].c_str(), rgb_channels_2, pc.num_channels);
 
+    bool point_inside =
+            (pc.y1 >= 0 && pc.y1 < rgb_channels_1[0].rows() &&
+            pc.x1 >= 0 && pc.x1 < rgb_channels_1[0].cols()) &&
+            (pc.y0 >= 0 && pc.y0 < rgb_channels_1[0].rows() &&
+            pc.x0 >= 0 && pc.x0 < rgb_channels_1[0].cols());
+
+    assert(point_inside);
+    if (!point_inside)
+        return 1;
+
     preprocess_channels(pc, rgb_channels_1, intensity_1);
     preprocess_channels(pc, rgb_channels_2, intensity_2);
 

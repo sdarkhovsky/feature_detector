@@ -16,20 +16,18 @@ class c_range_key
 public:
     bool operator() (const c_range_key& lhs, const c_range_key& rhs) const
     {
-        if (lhs.range_num[0] < rhs.range_num[0])
-            return true;
-        if (lhs.range_num[0] > rhs.range_num[0])
-            return false;
-        if (lhs.range_num[1] < rhs.range_num[1])
-            return true;
-        if (lhs.range_num[1] > rhs.range_num[1])
-            return false;
-        if (lhs.range_num[2] < rhs.range_num[2])
-            return true;
+        for (int i = 0; i < num_range_dim; i++)
+        {
+            if (lhs.range_num[i] < rhs.range_num[i])
+                return true;
+            if (lhs.range_num[i] > rhs.range_num[i])
+                return false;
+        }
         return false;
-    };
+    }
 
-    int range_num[3];
+    static const int num_range_dim =3;
+    int range_num[num_range_dim];
 };
 
 class c_point
@@ -284,7 +282,8 @@ public:
     {
         int x, y;
 
-        int range[3];
+        int range[c_range_key::num_range_dim];
+        assert(c_range_key::num_range_dim == 3);
         c_point pnt;
         for (y = 0; y < height; y++) {
             for (x = 0; x < width; x++) {
@@ -303,7 +302,10 @@ public:
                 }
 
                 c_range_key range_key;
-                memcpy(range_key.range_num, range, sizeof(range));
+                for (int i = 0; i < c_range_key::num_range_dim; i++)
+                {
+                    range_key.range_num[i] = range[i];
+                }
                 c_point_set& ps = point_set_map[range_key];
                 ps.add_point(pnt);
             }
@@ -329,6 +331,7 @@ public:
         int num_ransack_iterations = 20;
         for (int rans_i = 0; rans_i < num_ransack_iterations; rans_i++)
         {
+            cout << "rans_i=" << rans_i << "\n";
             for (int i = 0; i < 8; i++)
             {
                 sel_correspondences.push_back(correspondences[distribution(generator)]);
@@ -406,6 +409,8 @@ public:
             {
                 it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
                 it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
+                cout << "F_err=" << it->F_err << "\n";
+
                 if (it->F_err < F_err_thresh)
                     pass_count++;
             }
@@ -421,10 +426,10 @@ public:
     void learn_statistic_parameters()
     {
         MatrixXd linear_statistic_parameters;
-
-        for (int i = 0; i < pc.learn_statistic_iterations; i++)
+        
+        for (learn_iter = 0; learn_iter < pc.learn_statistic_iterations; learn_iter++)
         {
-            std::cout << "learn_statistic_parameters iteration=" << i << "\n";
+            std::cout << "\nlearn_statistic_parameters iteration=" << learn_iter << "\n";
             calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
             calculate_image_correspondence(linear_statistic_parameters);
         }
@@ -460,13 +465,25 @@ public:
                 }
             }
         }
-        errno_t err = write_png_file(pc.correspondence_image_path.c_str(), vis_rgb_channels, 3);
+
+        std::size_t found = pc.correspondence_image_path.find_last_of(".");
+        std::string name = pc.correspondence_image_path.substr(0, found);
+        std::string extension = pc.correspondence_image_path.substr(found);
+        std::string image_path = name + std::to_string(learn_iter) + extension;
+
+        std::cout << image_path << "\n";
+
+        errno_t err = write_png_file(image_path.c_str(), vis_rgb_channels, 3);
     }
 
     void calculate_image_correspondence(MatrixXd& linear_statistic_parameters)
     {
         MatrixXd statistic_channels_1[3];
         MatrixXd statistic_channels_2[3];
+
+        point_sets_1.clear();
+        point_sets_2.clear();
+        correspondences.clear();
 
         for (int c = 0; c < pc.num_channels; c++) {
             calculate_image_statistic(rgb_channels_1[c], linear_statistic_parameters, statistic_channels_1[c]);
@@ -477,48 +494,55 @@ public:
             range_length[c] = (maxCoeff_1[c] - minCoeff_1[c]) / pc.num_chan_ranges;
         }
 
-        std::map<c_range_key, c_point_set, c_range_key> point_sets_1;
-        std::map<c_range_key, c_point_set, c_range_key> point_sets_2;
-
         calculate_statistic_point_sets(statistic_channels_1, point_sets_1);
         calculate_statistic_point_sets(statistic_channels_2, point_sets_2);
 
-        std::cout << "point_sets_1 size=" << point_sets_1.size() << "point_sets_2 size=" << point_sets_2.size() << "\n";
+        std::cout << "point_sets_1 size=" << point_sets_1.size() << " point_sets_2 size=" << point_sets_2.size() << "\n";
 
         // filter corresponence sets by set size
-        correspondences.clear();
         int statistic_localization_x = width*pc.statistic_localization;
         int statistic_localization_y = height*pc.statistic_localization;
         for (auto it = point_sets_1.begin(); it != point_sets_1.end(); ++it)
         {
             c_point_set* ps1 = &it->second;
-            c_point_set* ps2 = &point_sets_2[it->first];
-            if (ps1->points.size() == 0 || ps2->points.size() == 0)
-                continue;
-            if (ps1->diam_x < statistic_localization_x && ps1->diam_y < statistic_localization_y &&
-                ps2->diam_x < statistic_localization_x && ps2->diam_y < statistic_localization_y)
+
+            for (int i = 0; i < c_range_key::num_range_dim; i++)
             {
-                c_point_set_correspondence psc;
-                psc.point_set1 = ps1;
-                psc.point_set2 = ps2;
-                correspondences.push_back(psc);
+                // check neighbouring ranges for cases when statistic is on a range boundary
+                for (int j = -1; j <= 1; j++)
+                {
+                    c_range_key rk = it->first;
+                    rk.range_num[i] += j;
+
+                    c_point_set* ps2 = &point_sets_2[rk];
+                    if (ps1->points.size() == 0 || ps2->points.size() == 0)
+                        continue;
+                    if (ps1->diam_x < statistic_localization_x && ps1->diam_y < statistic_localization_y &&
+                        ps2->diam_x < statistic_localization_x && ps2->diam_y < statistic_localization_y)
+                    {
+                        c_point_set_correspondence psc;
+                        psc.point_set1 = ps1;
+                        psc.point_set2 = ps2;
+                        correspondences.push_back(psc);
+                    }
+                }
             }
         }
 
         double pass_ratio;
         MatrixXd best_F;
         check_correspondences(best_F, pass_ratio);
-        double pass_ratio_thresh = std::min(4 * 8, (int)correspondences.size()) / correspondences.size();  // 8 are fit automatically when F is selected
+        double pass_ratio_thresh = (double)std::min(4 * 8, (int)correspondences.size()) / (double)correspondences.size();  // 8 are fit automatically when F is selected
 
-        std::cout << "correspondences size=" << correspondences.size() << "pass_ratio_thresh=" << pass_ratio_thresh << "pass_ratio=" << pass_ratio << "\n";
-
-        show_correspondences();
+        std::cout << "correspondences size=" << correspondences.size() << " pass_ratio_thresh=" << pass_ratio_thresh << " pass_ratio=" << pass_ratio << "\n";
 
         if (pass_ratio >= pass_ratio_thresh)
         {
             good_statistic_parameters.push_back(linear_statistic_parameters);
             good_statistic_pass_ratio.push_back(pass_ratio);
+            show_correspondences();
         }
+
 #if 0
         while (true)
         {
@@ -537,6 +561,10 @@ public:
 #endif
     }
 
+    int learn_iter;
+
+    std::map<c_range_key, c_point_set, c_range_key> point_sets_1;
+    std::map<c_range_key, c_point_set, c_range_key> point_sets_2;
     std::vector <c_point_set_correspondence> correspondences;
     std::default_random_engine generator;
 

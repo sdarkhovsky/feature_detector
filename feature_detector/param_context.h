@@ -19,8 +19,8 @@ public:
         wy = 3;
         max_diff = 0.1;
         num_chan_ranges = 10;
-        statistic_localization = 0.2;
-        learn_statistic_iterations = 10;
+        statistic_localization = 0.1;
+        learn_statistic_iterations = 1;
     }
 
     /*
