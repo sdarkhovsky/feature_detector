@@ -7,7 +7,7 @@
 #include <map>
 #include <random>
 #include <iostream>
-
+#include <fstream>  
 
 using namespace std;
 
@@ -225,7 +225,6 @@ public:
         image1_graph.init(rgb_channels_1, pc.num_channels);
         image2_graph.init(rgb_channels_2, pc.num_channels);
 #endif
-        F_err_thresh = 1.0e-08;
     }
 
 #if 0
@@ -240,20 +239,32 @@ public:
         std::uniform_real_distribution<double> distribution(-1.0, 1.0);
         int wsize = (2 * wx + 1)*(2 * wy + 1);
 
+#define diff_statistic_type 0
+#define normalized_statistic_type 1
+        int statistic_type = normalized_statistic_type;
+
         params = MatrixXd::Zero(2*wy+1, 2*wx+1);
         for (int i1 = -wy; i1 <= wy; i1++)
         {
             for (int i2 = -wx; i2 <= wx; i2++)
             {
-                if (i1*i1 + i2*i2 <= wsize*wsize)
-                {
-                    params(i1+wy, i2+wx) = distribution(generator);
-                }
+//                if (i1*i1 + i2*i2 <= wsize*wsize)
+//                {
+                params(i1+wy, i2+wx) = distribution(generator);
+//                }
             }
         }
 
-        // make total sum 0
-        params(wy, wx) = - (params.sum() - params(wy, wx));
+        if (statistic_type == diff_statistic_type)
+        {
+            // make total sum 0
+            params(wy, wx) = -(params.sum() - params(wy, wx));
+        }
+        else
+            if (statistic_type == normalized_statistic_type)
+            {
+                params.normalize();
+            }
     }
 
     void calculate_image_statistic(const MatrixXd& rgb_channel, const MatrixXd& linear_statistic_parameters, MatrixXd& statistic)
@@ -445,7 +456,7 @@ public:
                 cout << "center2=" << it->point_set2->center;
                 cout << "\n";
 #endif
-                if (abs(it->F_err) < F_err_thresh)
+                if (abs(it->F_err) < pc.F_err_thresh)
                     pass_count++;
             }
 //            cout << "\n";
@@ -467,6 +478,16 @@ public:
             std::cout << "\nlearn_statistic_parameters iteration=" << learn_iter << "\n";
             calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
             calculate_image_correspondence(linear_statistic_parameters);
+        }
+
+        std::ofstream good_statistics_file(pc.good_statistics_file_path.c_str());
+        if (good_statistics_file.is_open())
+        {
+            for (auto it = good_statistic_parameters.begin(); it != good_statistic_parameters.end(); it++)
+            {
+                good_statistics_file << *it << '\n';
+                //            file << "m" << '\n' << colm(m) << '\n';
+            }
         }
     }
 
@@ -493,7 +514,7 @@ public:
 
             it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
             it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
-            if (abs(it->F_err) < F_err_thresh)
+            if (abs(it->F_err) < pc.F_err_thresh)
             {
                 rgb[0] = 255;
             }
@@ -581,7 +602,6 @@ public:
         if (pass_ratio >= pass_ratio_thresh)
         {
             good_statistic_parameters.push_back(linear_statistic_parameters);
-            good_statistic_pass_ratio.push_back(pass_ratio);
             show_correspondences(best_F);
         }
 
@@ -605,8 +625,6 @@ public:
 
     int learn_iter;
 
-    double  F_err_thresh;
-
     std::map<c_range_key, c_point_set, c_range_key> point_sets_1;
     std::map<c_range_key, c_point_set, c_range_key> point_sets_2;
     std::vector <c_point_set_correspondence> correspondences;
@@ -620,7 +638,6 @@ public:
     MatrixXd rgb_channels_2[3];
 
     vector <MatrixXd> good_statistic_parameters;
-    vector <double> good_statistic_pass_ratio;
 
     double minCoeff_1[3], maxCoeff_1[3], range_length[3];
 #if 0

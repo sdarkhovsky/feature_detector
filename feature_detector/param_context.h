@@ -22,6 +22,7 @@ public:
         statistic_localization = 0.1;
         learn_statistic_iterations = 20;
         num_ransack_iterations = 20;
+        F_err_thresh = 1.0e-08;
     }
 
     /*
@@ -51,6 +52,12 @@ public:
             {
                 i++;
                 cand_coef = atof(argv[i]);
+            }
+
+            if (arg == "-ferr")
+            {
+                i++;
+                F_err_thresh = atof(argv[i]);
             }
 
             if (arg == "-nocorpnt")
@@ -110,13 +117,16 @@ public:
                 i++;
                 windows_diff_image_path = argv[i];
             }
-
             if (arg == "-ocor")
             {
                 i++;
                 correspondence_image_path = argv[i];
             }
-
+            if (arg == "-ogdst")
+            {
+                i++;
+                good_statistics_file_path = argv[i];
+            }
             if (arg == "-ovline")
             {
                 i++;
@@ -192,6 +202,7 @@ public:
     std::string vline_diff_image_path;
     std::string windows_diff_image_path;
     std::string correspondence_image_path;
+    std::string good_statistics_file_path;
     
     int x0;  // a point of the image1 for which correspondence is calculated in the image2
     int y0;
@@ -208,4 +219,5 @@ public:
     double statistic_localization;
     int learn_statistic_iterations;
     int num_ransack_iterations;
+    double  F_err_thresh;
 };
