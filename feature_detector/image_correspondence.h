@@ -11,6 +11,13 @@
 
 using namespace std;
 
+class c_statistic
+{
+public:
+    MatrixXd params;
+    enum statistic_type { differential = 0, linear = 1, sigmoid = 2 };
+};
+
 class c_range_key
 {
 public:
@@ -233,58 +240,63 @@ public:
     }
 #endif
 
-    void calculate_linear_statistic_parameters(int wx, int wy, MatrixXd& params)
+    void calculate_linear_statistic_parameters(int wx, int wy, c_statistic& statistic)
     {
         std::uniform_real_distribution<double> distribution(-1.0, 1.0);
         int wsize = (2 * wx + 1)*(2 * wy + 1);
 
-#define diff_statistic_type 0
-#define normalized_statistic_type 1
-        int statistic_type = diff_statistic_type;
-
-        params = MatrixXd::Zero(2*wy+1, 2*wx+1);
+        statistic.params = MatrixXd::Zero(2*wy+1, 2*wx+1);
         for (int i1 = -wy; i1 <= wy; i1++)
         {
             for (int i2 = -wx; i2 <= wx; i2++)
             {
-//                if (i1*i1 + i2*i2 <= wsize*wsize)
-//                {
-                params(i1+wy, i2+wx) = distribution(statistic_generator);
-//                }
+                statistic.params(i1+wy, i2+wx) = distribution(statistic_generator);
             }
         }
 
-        if (statistic_type == diff_statistic_type)
+        switch (pc.statistic_type)
         {
-            // make total sum 0
-            params(wy, wx) = -(params.sum() - params(wy, wx));
-        }
-        else
-            if (statistic_type == normalized_statistic_type)
+            case c_statistic::differential:
             {
-                params.normalize();
+                // make total sum 0
+                statistic.params(wy, wx) = -(statistic.params.sum() - statistic.params(wy, wx));
             }
+            default:
+            {
+            }
+        }
     }
 
-    void calculate_image_statistic(const MatrixXd& rgb_channel, const MatrixXd& linear_statistic_parameters, MatrixXd& statistic)
+    void calculate_image_statistic(const MatrixXd& rgb_channel, c_statistic& statistic, MatrixXd& image_statistic)
     {
         int x, y, x0, y0;
         double sum;
 
-        int wx = (linear_statistic_parameters.cols() - 1) / 2;
-        int wy = (linear_statistic_parameters.rows() - 1) / 2;
+        int wx = (statistic.params.cols() - 1) / 2;
+        int wy = (statistic.params.rows() - 1) / 2;
 
-        statistic = MatrixXd::Zero(height, width);
+        image_statistic = MatrixXd::Zero(height, width);
 
         for (y0 = wy; y0 < height - wy; y0++) {
             for (x0 = wx; x0 < width - wx; x0++) {
                 sum = 0.0;
                 for (y = y0 - wy; y <= y0 + wy; y++) {
                     for (x = x0 - wx; x <= x0 + wx; x++) {
-                        sum += rgb_channel(y, x)*linear_statistic_parameters(y - y0 + wy, x - x0 + wx);
+                        sum += rgb_channel(y, x)*statistic.params(y - y0 + wy, x - x0 + wx);
                     }
                 }
-                statistic(y0, x0) = sum;
+
+                switch (pc.statistic_type)
+                {
+                    case c_statistic::sigmoid:
+                    {
+                        image_statistic(y0, x0) = 1/(1+exp(-sum));
+                    }
+                    default:
+                    {
+                        image_statistic(y0, x0) = sum;
+                    }
+                }
             }
         }
     }
@@ -470,15 +482,16 @@ public:
 
     void learn_statistic_parameters()
     {
-        MatrixXd linear_statistic_parameters;
+        c_statistic statistic;
         
         for (learn_iter = 0; learn_iter < pc.learn_statistic_iterations; learn_iter++)
         {
             std::cout << "\nlearn_statistic_parameters iteration=" << learn_iter << "\n";
-            calculate_linear_statistic_parameters(pc.wx, pc.wy, linear_statistic_parameters);
-            calculate_image_correspondence(linear_statistic_parameters);
+            calculate_linear_statistic_parameters(pc.wx, pc.wy, statistic);
+            calculate_image_correspondence(statistic);
         }
 
+#if 0
         std::ofstream good_statistics_file(pc.good_statistics_file_path.c_str());
         if (good_statistics_file.is_open())
         {
@@ -488,6 +501,7 @@ public:
                 //            file << "m" << '\n' << colm(m) << '\n';
             }
         }
+#endif
     }
 
     void show_correspondences(MatrixXd& F)
@@ -516,6 +530,10 @@ public:
             if (abs(it->F_err) < pc.F_err_thresh)
             {
                 rgb[0] = 255;
+            }
+            else
+            {
+                continue;
             }
 
 #if 0
@@ -559,7 +577,7 @@ public:
         errno_t err = write_png_file(image_path.c_str(), vis_rgb_channels, 3);
     }
 
-    void calculate_image_correspondence(MatrixXd& linear_statistic_parameters)
+    void calculate_image_correspondence(c_statistic& statistic)
     {
         MatrixXd statistic_channels_1[3];
         MatrixXd statistic_channels_2[3];
@@ -569,8 +587,8 @@ public:
         correspondences.clear();
 
         for (int c = 0; c < pc.num_channels; c++) {
-            calculate_image_statistic(rgb_channels_1[c], linear_statistic_parameters, statistic_channels_1[c]);
-            calculate_image_statistic(rgb_channels_2[c], linear_statistic_parameters, statistic_channels_2[c]);
+            calculate_image_statistic(rgb_channels_1[c], statistic, statistic_channels_1[c]);
+            calculate_image_statistic(rgb_channels_2[c], statistic, statistic_channels_2[c]);
 
             minCoeff_1[c] = statistic_channels_1[c].minCoeff();
             maxCoeff_1[c] = statistic_channels_1[c].maxCoeff();
@@ -623,7 +641,7 @@ public:
 
         if (pass_ratio >= pass_ratio_thresh)
         {
-            good_statistic_parameters.push_back(linear_statistic_parameters);
+//            good_statistic_parameters.push_back(linear_statistic_parameters);
             show_correspondences(best_F);
         }
 
@@ -660,7 +678,7 @@ public:
     MatrixXd rgb_channels_1[3];
     MatrixXd rgb_channels_2[3];
 
-    vector <MatrixXd> good_statistic_parameters;
+//    vector <MatrixXd> good_statistic_parameters;
 
     double minCoeff_1[3], maxCoeff_1[3], range_length[3];
 #if 0

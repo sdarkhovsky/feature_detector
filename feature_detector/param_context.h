@@ -23,6 +23,7 @@ public:
         learn_statistic_iterations = 20;
         num_ransack_iterations = 20;
         F_err_thresh = 1.0e-08;
+        statistic_type = 0;
     }
 
     /*
@@ -79,6 +80,18 @@ public:
                 i++;
                 num_ransack_iterations = atoi(argv[i]);
             }
+            if (arg == "-statt")
+            {
+                i++;
+                statistic_type = atoi(argv[i]);
+            }
+
+            if (arg == "-ncr")
+            {
+                i++;
+                num_chan_ranges = atoi(argv[i]);
+            }
+
             if (arg == "-lsi")
             {
                 i++;
@@ -220,4 +233,5 @@ public:
     int learn_statistic_iterations;
     int num_ransack_iterations;
     double  F_err_thresh;
+    int statistic_type;
 };
