@@ -225,6 +225,7 @@ public:
         image1_graph.init(rgb_channels_1, pc.num_channels);
         image2_graph.init(rgb_channels_2, pc.num_channels);
 #endif
+        F_err_thresh = 1.0e-08;
     }
 
 #if 0
@@ -283,14 +284,14 @@ public:
         int x, y;
 
         int range[c_range_key::num_range_dim];
-        assert(c_range_key::num_range_dim == 3);
+        assert(c_range_key::num_range_dim == pc.num_channels);
         c_point pnt;
         for (y = 0; y < height; y++) {
             for (x = 0; x < width; x++) {
+                pnt.x = x;
+                pnt.y = y;
                 for (int c = 0; c < pc.num_channels; c++) {
                     pnt.statistic[c] = statistic_channels[c](y, x);
-                    pnt.x = x;
-                    pnt.y = y;
                     if (range_length[c] == 0)
                         range[c] = 0;
                     else
@@ -319,7 +320,6 @@ public:
 
     void check_correspondences(MatrixXd& best_F, double& pass_ratio)
     {
-        std::default_random_engine generator;
         std::uniform_int_distribution<unsigned int> distribution(0, correspondences.size()-1);
         std::vector<c_point_set_correspondence> sel_correspondences;
         // calculate the fundamental matrix using normalized 8-point algorithm and ransac, see Hartley, Zisserman book, algorithm 11.4
@@ -328,10 +328,9 @@ public:
         best_F = MatrixXd::Zero(3, 3);
         pass_ratio = 0;
         
-        int num_ransack_iterations = 20;
-        for (int rans_i = 0; rans_i < num_ransack_iterations; rans_i++)
+        for (int rans_i = 0; rans_i < pc.num_ransack_iterations; rans_i++)
         {
-            cout << "rans_i=" << rans_i << "\n";
+//            cout << "rans_i=" << rans_i << "\n";
             for (int i = 0; i < 8; i++)
             {
                 sel_correspondences.push_back(correspondences[distribution(generator)]);
@@ -354,10 +353,12 @@ public:
                 rms1 += (sel_correspondences[i].point_set1->center - centroid1).squaredNorm();
                 rms2 += (sel_correspondences[i].point_set2->center - centroid2).squaredNorm();
             }
+            rms1 = sqrt(rms1/8);
+            rms2 = sqrt(rms2 / 8);
 
             double scale1, scale2;
-            scale1 = rms1*sqrt(2);
-            scale2 = rms2*sqrt(2);
+            scale1 = sqrt(2)/rms1;
+            scale2 = sqrt(2)/rms2;
 
             MatrixXd T1(3, 3);
             T1 << scale1, 0, -scale1*centroid1(0),
@@ -365,7 +366,7 @@ public:
                 0, 0, 1;
 
             MatrixXd T2(3, 3);
-            T1 << scale2, 0, -scale2*centroid2(0),
+            T2 << scale2, 0, -scale2*centroid2(0),
                 0, scale2, -scale2*centroid2(1),
                 0, 0, 1;
 
@@ -380,40 +381,74 @@ public:
             MatrixXd A = MatrixXd::Zero(9, 9);
             for (int i = 0; i < 8; i++)
             {
-                A(i, 0) = normalized_pnts1[i](1)*normalized_pnts2[i](1);
-                A(i, 1) = normalized_pnts1[i](1)*normalized_pnts2[i](0);
-                A(i, 2) = normalized_pnts1[i](1);
+                A(i, 0) = normalized_pnts1[i](0)*normalized_pnts2[i](0);
+                A(i, 1) = normalized_pnts1[i](0)*normalized_pnts2[i](1);
+                A(i, 2) = normalized_pnts1[i](0);
 
-                A(i, 3) = normalized_pnts1[i](0)*normalized_pnts2[i](1);
-                A(i, 4) = normalized_pnts1[i](0)*normalized_pnts2[i](0);
-                A(i, 5) = normalized_pnts1[i](0);
+                A(i, 3) = normalized_pnts1[i](1)*normalized_pnts2[i](0);
+                A(i, 4) = normalized_pnts1[i](1)*normalized_pnts2[i](1);
+                A(i, 5) = normalized_pnts1[i](1);
 
-                A(i, 6) = normalized_pnts2[i](1);
-                A(i, 7) = normalized_pnts2[i](0);
+                A(i, 6) = normalized_pnts2[i](0);
+                A(i, 7) = normalized_pnts2[i](1);
                 A(i, 8) = 1;
             }
 
             JacobiSVD<MatrixXd> svd(A, ComputeThinU | ComputeThinV);
+#if 0
+            cout << "U=" << svd.matrixU() << "\n";
+            cout << "V="<< svd.matrixV() << "\n";
+            cout << "S="<< svd.singularValues() << "\n";
+#endif
             auto& V = svd.matrixV();
-            VectorXd vF = V.col(V.cols() - 1);
+
+            // smallest singular value
+            auto& S = svd.singularValues();
+            int i_sv;
+
+            // the last 9th singular value is suppose to be 0 as F has rank 8, so just skip it, start from  S.size() - 2
+            for (i_sv = S.size() - 2; i_sv >= 0; i_sv--)
+            {
+#define very_small_number 1.0e-20     // 1.0e-34
+                if (abs(i_sv) > very_small_number)
+                    break;
+            }
+            VectorXd vF = V.col(i_sv);
+#if 0
+            cout << "i_sv=" << i_sv << "\n";
+            cout << "vF=" << vF << "\n";
+#endif
             MatrixXd F(3, 3);
             F << vF(0), vF(1), vF(2),
                 vF(3), vF(4), vF(5),
                 vF(6), vF(7), vF(8);
+//            cout << "F1=" << F << "\n";
             F = T1.transpose()*F*T2;
+#if 0
+            cout << "T1=" << T1 << "\n";
+            cout << "T2=" << T2 << "\n";
+            cout << "F2=" << F << "\n";
+#endif
             F.normalize();
 
-            double  F_err_thresh = 0.5;
+//            cout << "F=" << F << "\n";
+
             int pass_count = 0;
             for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
             {
                 it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
                 it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
+#if 0
                 cout << "F_err=" << it->F_err << "\n";
-
-                if (it->F_err < F_err_thresh)
+                cout << "center1=" << it->point_set1->center;
+                cout << "\n";
+                cout << "center2=" << it->point_set2->center;
+                cout << "\n";
+#endif
+                if (abs(it->F_err) < F_err_thresh)
                     pass_count++;
             }
+//            cout << "\n";
             double cur_pass_ratio = (double)pass_count / (double)correspondences.size();
             if (cur_pass_ratio > pass_ratio)
             {
@@ -435,7 +470,7 @@ public:
         }
     }
 
-    void show_correspondences()
+    void show_correspondences(MatrixXd& F)
     {
         MatrixXd vis_rgb_channels[3];
         int gap = width / 10;
@@ -455,6 +490,13 @@ public:
             y2 = it->point_set2->center(1);
 
             double rgb[3] = { 0,0,0 };
+
+            it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
+            it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
+            if (abs(it->F_err) < F_err_thresh)
+            {
+                rgb[0] = 255;
+            }
 
             for (int x = x1; x <= x2; x++)
             {
@@ -540,7 +582,7 @@ public:
         {
             good_statistic_parameters.push_back(linear_statistic_parameters);
             good_statistic_pass_ratio.push_back(pass_ratio);
-            show_correspondences();
+            show_correspondences(best_F);
         }
 
 #if 0
@@ -562,6 +604,8 @@ public:
     }
 
     int learn_iter;
+
+    double  F_err_thresh;
 
     std::map<c_range_key, c_point_set, c_range_key> point_sets_1;
     std::map<c_range_key, c_point_set, c_range_key> point_sets_2;

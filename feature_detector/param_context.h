@@ -20,7 +20,8 @@ public:
         max_diff = 0.1;
         num_chan_ranges = 10;
         statistic_localization = 0.1;
-        learn_statistic_iterations = 1;
+        learn_statistic_iterations = 20;
+        num_ransack_iterations = 20;
     }
 
     /*
@@ -66,6 +67,17 @@ public:
                 i++;
                 num_candidates = atoi(argv[i]);
             }
+            if (arg == "-nri")
+            {
+                i++;
+                num_ransack_iterations = atoi(argv[i]);
+            }
+            if (arg == "-lsi")
+            {
+                i++;
+                learn_statistic_iterations = atoi(argv[i]);
+            }
+
             if (arg == "-i1")
             {
                 i++;
@@ -195,4 +207,5 @@ public:
     int num_chan_ranges;
     double statistic_localization;
     int learn_statistic_iterations;
+    int num_ransack_iterations;
 };
