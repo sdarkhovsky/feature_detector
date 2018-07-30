@@ -66,8 +66,7 @@ public:
                 max_y = point.y;
         }
 
-        diam_x = max_x - min_x;
-        diam_y = max_y - min_y;
+        diam << max_x - min_x, max_y - min_y;
 
         center << (min_x + max_x) / 2, (min_y + max_y) / 2, 1;
     }
@@ -85,7 +84,7 @@ public:
     vector <c_point> points;
     double min_x, max_x;
     double min_y, max_y;
-    double diam_x, diam_y;
+    Vector2d diam;
     Vector3d center;   // homogeneous
 };
 
@@ -241,7 +240,7 @@ public:
 
 #define diff_statistic_type 0
 #define normalized_statistic_type 1
-        int statistic_type = normalized_statistic_type;
+        int statistic_type = diff_statistic_type;
 
         params = MatrixXd::Zero(2*wy+1, 2*wx+1);
         for (int i1 = -wy; i1 <= wy; i1++)
@@ -250,7 +249,7 @@ public:
             {
 //                if (i1*i1 + i2*i2 <= wsize*wsize)
 //                {
-                params(i1+wy, i2+wx) = distribution(generator);
+                params(i1+wy, i2+wx) = distribution(statistic_generator);
 //                }
             }
         }
@@ -344,7 +343,7 @@ public:
 //            cout << "rans_i=" << rans_i << "\n";
             for (int i = 0; i < 8; i++)
             {
-                sel_correspondences.push_back(correspondences[distribution(generator)]);
+                sel_correspondences.push_back(correspondences[distribution(ransac_generator)]);
             }
 
             centroid1 = VectorXd::Zero(3);
@@ -519,6 +518,27 @@ public:
                 rgb[0] = 255;
             }
 
+#if 0
+            if (/*(x1 == 4 && y1 == 90) || (x1 == 236 && y1 == 291) ||*/ (x1 == 239 && y1 == 274))
+            {
+                cout << "\nF_err=" << it->F_err << "\n";
+                cout << "set1->center=" << it->point_set1->center << "\n" << "set1->diam=" << it->point_set1->diam << "\n";
+                cout << "set2->center=" << it->point_set2->center << "\n" << "set2->diam=" << it->point_set2->diam << "\n";
+                cout << "F=" << F << "\n";
+                cout << "point_set1=\n";
+                for (int i = 0; i < it->point_set1->points.size(); i++)
+                {
+                    cout << "x=" << it->point_set1->points[i].x << "  y=" << it->point_set1->points[i].y << "\n";
+                }
+                cout << "point_set2=\n";
+                for (int i = 0; i < it->point_set2->points.size(); i++)
+                {
+                    cout << "x=" << it->point_set2->points[i].x << "  y=" << it->point_set2->points[i].y << "\n";
+                }
+                cout << "\n";
+            }
+#endif
+
             for (int x = x1; x <= x2; x++)
             {
                 int y = y1 + (x - x1)*(y2 - y1) / (x2 - x1);
@@ -574,14 +594,16 @@ public:
                 // check neighbouring ranges for cases when statistic is on a range boundary
                 for (int j = -1; j <= 1; j++)
                 {
+                    if (i > 0 && j == 0)
+                        continue;  // otherwise there are duplicate 0 0 0 combinations
                     c_range_key rk = it->first;
                     rk.range_num[i] += j;
 
                     c_point_set* ps2 = &point_sets_2[rk];
                     if (ps1->points.size() == 0 || ps2->points.size() == 0)
                         continue;
-                    if (ps1->diam_x < statistic_localization_x && ps1->diam_y < statistic_localization_y &&
-                        ps2->diam_x < statistic_localization_x && ps2->diam_y < statistic_localization_y)
+                    if (ps1->diam(0) < statistic_localization_x && ps1->diam(1) < statistic_localization_y &&
+                        ps2->diam(0) < statistic_localization_x && ps2->diam(1) < statistic_localization_y)
                     {
                         c_point_set_correspondence psc;
                         psc.point_set1 = ps1;
@@ -628,7 +650,8 @@ public:
     std::map<c_range_key, c_point_set, c_range_key> point_sets_1;
     std::map<c_range_key, c_point_set, c_range_key> point_sets_2;
     std::vector <c_point_set_correspondence> correspondences;
-    std::default_random_engine generator;
+    std::default_random_engine statistic_generator;
+    std::default_random_engine ransac_generator;
 
     int width;
     int height;
