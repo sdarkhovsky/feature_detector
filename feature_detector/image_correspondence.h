@@ -214,6 +214,9 @@ public:
     vector <c_node*> nodes;
 };
 #endif
+
+//void preprocess_channels(param_context& pc, MatrixXd rgb_channels[], MatrixXd& intensity);
+
 class c_image_correspondence
 {
 public:
@@ -223,6 +226,12 @@ public:
 
         read_png_file(pc.image_path[0].c_str(), rgb_channels_1, pc.num_channels);
         read_png_file(pc.image_path[1].c_str(), rgb_channels_2, pc.num_channels);
+
+#if 0
+        MatrixXd intensity_1, intensity_2;
+        preprocess_channels(pc, rgb_channels_1, intensity_1);
+        preprocess_channels(pc, rgb_channels_2, intensity_2);
+#endif
 
         width = rgb_channels_1[0].cols();
         height = rgb_channels_1[0].rows();
@@ -533,7 +542,8 @@ public:
             }
             else
             {
-                continue;
+                if (pc.hide_bad_correspondences)
+                    continue;
             }
 
 #if 0

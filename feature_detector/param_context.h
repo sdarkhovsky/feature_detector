@@ -24,6 +24,7 @@ public:
         num_ransack_iterations = 20;
         F_err_thresh = 1.0e-08;
         statistic_type = 0;
+        hide_bad_correspondences = false;
     }
 
     /*
@@ -64,6 +65,11 @@ public:
             if (arg == "-nocorpnt")
             {
                 draw_corr_point = false;
+            }
+
+            if (arg == "-hbc")
+            {
+                hide_bad_correspondences = true;
             }
 
             if (arg == "-batch")
@@ -234,4 +240,5 @@ public:
     int num_ransack_iterations;
     double  F_err_thresh;
     int statistic_type;
+    bool hide_bad_correspondences;
 };
