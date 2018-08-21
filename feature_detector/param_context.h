@@ -22,7 +22,7 @@ public:
         statistic_localization = 0.1;
         learn_statistic_iterations = 20;
         num_ransack_iterations = 20;
-        F_err_thresh = 1.0e-08;
+        F_err_thresh = 2*2*4;
         statistic_type = 0;
         hide_bad_correspondences = false;
     }

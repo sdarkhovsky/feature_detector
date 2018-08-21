@@ -98,9 +98,20 @@ public:
 class c_point_set_correspondence
 {
 public:
+    double calculate_correspondence_error(MatrixXd& F)
+    {
+        // calculate the Sampson error (p.287 Hartley, Zisserman)
+        auto e1 = point_set1->center.transpose()*F*point_set2->center;
+        auto e2 = F*point_set2->center;
+        auto e3 = F.transpose()*point_set1->center;
+
+        // in pixels squared
+        double err = e1(0)*e1(0) / (e2(0)*e2(0) + e2(1)*e2(1) + e3(0)*e3(0) + e3(1)*e3(1));
+        return err;
+    }
+
     c_point_set* point_set1;
     c_point_set* point_set2;
-    double F_err;
 };
 
 #if 0
@@ -460,15 +471,14 @@ public:
             cout << "T2=" << T2 << "\n";
             cout << "F2=" << F << "\n";
 #endif
-            F.normalize();
+//            F.normalize();
 
 //            cout << "F=" << F << "\n";
 
             int pass_count = 0;
             for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
             {
-                it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
-                it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
+                double corr_err = it->calculate_correspondence_error(F);
 #if 0
                 cout << "F_err=" << it->F_err << "\n";
                 cout << "center1=" << it->point_set1->center;
@@ -476,7 +486,7 @@ public:
                 cout << "center2=" << it->point_set2->center;
                 cout << "\n";
 #endif
-                if (abs(it->F_err) < pc.F_err_thresh)
+                if (abs(corr_err) < pc.F_err_thresh)
                     pass_count++;
             }
 //            cout << "\n";
@@ -534,9 +544,8 @@ public:
 
             double rgb[3] = { 0,0,0 };
 
-            it->F_err = it->point_set1->center.transpose()*F*it->point_set2->center;
-            it->F_err /= (it->point_set1->center.norm()*it->point_set2->center.norm());
-            if (abs(it->F_err) < pc.F_err_thresh)
+            double corr_err = it->calculate_correspondence_error(F);
+            if (abs(corr_err) < pc.F_err_thresh)
             {
                 rgb[0] = 255;
             }
@@ -546,10 +555,23 @@ public:
                     continue;
             }
 
-#if 0
-            if (/*(x1 == 4 && y1 == 90) || (x1 == 236 && y1 == 291) ||*/ (x1 == 239 && y1 == 274))
+#if 1
+            if (/*(x1 == 4 && y1 == 90) || (x1 == 236 && y1 == 291) || (x1 == 261 && y1 == 438) */ (x1 == 9 && y1 == 91) )
             {
-                cout << "\nF_err=" << it->F_err << "\n";
+
+                // draw epipolar line 
+                double epipolar_line_rgb[3] = { 255,255,255 };
+                MatrixXd epipolar_line = F*it->point_set2->center;
+                for (int x = 0; x <= width; x++)
+                {
+                    int y = -(x*epipolar_line(0) + epipolar_line(2)) / epipolar_line(1);
+                    for (int i = 0; i < pc.num_channels; i++)
+                    {
+                        vis_rgb_channels[i](y, x) = epipolar_line_rgb[i];
+                    }
+                }
+
+                cout << "\corr_err=" << corr_err << "\n";
                 cout << "set1->center=" << it->point_set1->center << "\n" << "set1->diam=" << it->point_set1->diam << "\n";
                 cout << "set2->center=" << it->point_set2->center << "\n" << "set2->diam=" << it->point_set2->diam << "\n";
                 cout << "F=" << F << "\n";
