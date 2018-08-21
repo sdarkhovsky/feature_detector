@@ -25,6 +25,8 @@ public:
         F_err_thresh = 2*2*4;
         statistic_type = 0;
         hide_bad_correspondences = false;
+        pass_ratio_thresh = 24;
+        seed_random_engines = false;
     }
 
     /*
@@ -62,6 +64,12 @@ public:
                 F_err_thresh = atof(argv[i]);
             }
 
+            if (arg == "-stloc")
+            {
+                i++;
+                statistic_localization = atof(argv[i]);
+            }
+            
             if (arg == "-nocorpnt")
             {
                 draw_corr_point = false;
@@ -70,6 +78,11 @@ public:
             if (arg == "-hbc")
             {
                 hide_bad_correspondences = true;
+            }
+
+            if (arg == "-seed")
+            {
+                seed_random_engines = true;
             }
 
             if (arg == "-batch")
@@ -91,6 +104,14 @@ public:
                 i++;
                 statistic_type = atoi(argv[i]);
             }
+
+            if (arg == "-prt")
+            {
+                i++;
+                pass_ratio_thresh = atoi(argv[i]);
+            }
+
+
 
             if (arg == "-ncr")
             {
@@ -141,6 +162,13 @@ public:
                 i++;
                 correspondence_image_path = argv[i];
             }
+
+            if (arg == "-opcor")
+            {
+                i++;
+                point_correspondence_image_path = argv[i];
+            }
+
             if (arg == "-ogdst")
             {
                 i++;
@@ -222,6 +250,7 @@ public:
     std::string windows_diff_image_path;
     std::string correspondence_image_path;
     std::string good_statistics_file_path;
+    std::string point_correspondence_image_path;
     
     int x0;  // a point of the image1 for which correspondence is calculated in the image2
     int y0;
@@ -241,4 +270,6 @@ public:
     double  F_err_thresh;
     int statistic_type;
     bool hide_bad_correspondences;
+    int pass_ratio_thresh;
+    bool seed_random_engines;
 };

@@ -235,6 +235,12 @@ public:
     {
         pc = _pc;
 
+        if (pc.seed_random_engines)
+        {
+            statistic_generator.seed(time(NULL));
+            ransac_generator.seed(time(NULL));
+        }
+
         read_png_file(pc.image_path[0].c_str(), rgb_channels_1, pc.num_channels);
         read_png_file(pc.image_path[1].c_str(), rgb_channels_2, pc.num_channels);
 
@@ -609,6 +615,50 @@ public:
         errno_t err = write_png_file(image_path.c_str(), vis_rgb_channels, 3);
     }
 
+    void show_point_correspondence()
+    {
+        double rgb[3] = { 255,0,0 };
+        MatrixXd vis_rgb_channels[3];
+        for (int i = 0; i < pc.num_channels; i++)
+        {
+            vis_rgb_channels[i] = rgb_channels_2[i];
+        }
+
+        // find point set with the point pc.x0, pc.y0
+        for (auto it = point_sets_1.begin(); it != point_sets_1.end(); ++it)
+        {
+            c_range_key rk = it->first;
+            c_point_set* ps1 = &it->second;
+            c_point_set* ps2 = &point_sets_2[rk];
+            bool found = false;
+
+            for (int i = 0; i < ps1->points.size(); i++)
+            {
+                if (ps1->points[i].x == pc.x0 && ps1->points[i].y == pc.y0)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+                continue;
+
+            for (int i = 0; i < ps2->points.size(); i++)
+            {
+                int x = ps2->points[i].x;
+                int y = ps2->points[i].y;
+                for (int c = 0; c < pc.num_channels; c++)
+                {
+                    vis_rgb_channels[c](y, x) = rgb[c];
+                }
+            }
+            break;
+        }
+
+        errno_t err = write_png_file(pc.point_correspondence_image_path.c_str(), vis_rgb_channels, 3);
+    }
+
     void calculate_image_correspondence(c_statistic& statistic)
     {
         MatrixXd statistic_channels_1[3];
@@ -667,7 +717,7 @@ public:
         double pass_ratio;
         MatrixXd best_F;
         check_correspondences(best_F, pass_ratio);
-        double pass_ratio_thresh = (double)std::min(4 * 8, (int)correspondences.size()) / (double)correspondences.size();  // 8 are fit automatically when F is selected
+        double pass_ratio_thresh = (double)std::min(pc.pass_ratio_thresh, (int)correspondences.size()) / (double)correspondences.size();  // 8 are fit automatically when F is selected
 
         std::cout << "correspondences size=" << correspondences.size() << " pass_ratio_thresh=" << pass_ratio_thresh << " pass_ratio=" << pass_ratio << "\n";
 
@@ -676,6 +726,8 @@ public:
 //            good_statistic_parameters.push_back(linear_statistic_parameters);
             show_correspondences(best_F);
         }
+
+        show_point_correspondence();
 
 #if 0
         while (true)
