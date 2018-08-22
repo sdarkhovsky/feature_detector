@@ -18,30 +18,37 @@ public:
     enum statistic_type { differential = 0, linear = 1, sigmoid = 2 };
 };
 
+class c_statistic_channel_params
+{
+public:
+    double minCoeff, maxCoeff, range_length;
+};
+
 class c_range_key
 {
 public:
     bool operator() (const c_range_key& lhs, const c_range_key& rhs) const
     {
-        for (int i = 0; i < num_range_dim; i++)
+        int n = lhs.ranges.size();
+        if (n > rhs.ranges.size())
+            n = rhs.ranges.size();
+        for (int i = 0; i < n; i++)
         {
-            if (lhs.range_num[i] < rhs.range_num[i])
+            if (lhs.ranges[i] < rhs.ranges[i])
                 return true;
-            if (lhs.range_num[i] > rhs.range_num[i])
+            if (lhs.ranges[i] > rhs.ranges[i])
                 return false;
         }
         return false;
     }
 
-    static const int num_range_dim =3;
-    int range_num[num_range_dim];
+    vector<int> ranges;
 };
 
 class c_point
 {
 public:
     int x, y;
-    double statistic[3];
 };
 
 class c_point_set
@@ -98,7 +105,7 @@ public:
 class c_point_set_correspondence
 {
 public:
-    double calculate_correspondence_error(MatrixXd& F)
+    void calculate_correspondence_error(MatrixXd& F)
     {
         // calculate the Sampson error (p.287 Hartley, Zisserman)
         auto e1 = point_set1->center.transpose()*F*point_set2->center;
@@ -106,9 +113,13 @@ public:
         auto e3 = F.transpose()*point_set1->center;
 
         // in pixels squared
-        double err = e1(0)*e1(0) / (e2(0)*e2(0) + e2(1)*e2(1) + e3(0)*e3(0) + e3(1)*e3(1));
-        return err;
+        corr_err = e1(0)*e1(0) / (e2(0)*e2(0) + e2(1)*e2(1) + e3(0)*e3(0) + e3(1)*e3(1));
+        assert(corr_err >= 0);
     }
+
+    bool operator<(const c_point_set_correspondence &rhs) const { return corr_err < rhs.corr_err; }
+
+    double corr_err;
 
     c_point_set* point_set1;
     c_point_set* point_set2;
@@ -266,9 +277,12 @@ public:
     }
 #endif
 
-    void calculate_linear_statistic_parameters(int wx, int wy, c_statistic& statistic)
+    void calculate_linear_statistic_parameters(c_statistic& statistic)
     {
         std::uniform_real_distribution<double> distribution(-1.0, 1.0);
+        int wx = pc.wx;
+        int wy = pc.wy;
+
         int wsize = (2 * wx + 1)*(2 * wy + 1);
 
         statistic.params = MatrixXd::Zero(2*wy+1, 2*wx+1);
@@ -293,7 +307,7 @@ public:
         }
     }
 
-    void calculate_image_statistic(const MatrixXd& rgb_channel, c_statistic& statistic, MatrixXd& image_statistic)
+    void calculate_image_statistic(const MatrixXd& image_channel, c_statistic& statistic, MatrixXd& image_statistic)
     {
         int x, y, x0, y0;
         double sum;
@@ -308,7 +322,7 @@ public:
                 sum = 0.0;
                 for (y = y0 - wy; y <= y0 + wy; y++) {
                     for (x = x0 - wx; x <= x0 + wx; x++) {
-                        sum += rgb_channel(y, x)*statistic.params(y - y0 + wy, x - x0 + wx);
+                        sum += image_channel(y, x)*statistic.params(y - y0 + wy, x - x0 + wx);
                     }
                 }
 
@@ -327,36 +341,53 @@ public:
         }
     }
 
-    void calculate_statistic_point_sets(const MatrixXd statistic_channels[], std::map<c_range_key, c_point_set, c_range_key>& point_set_map)
+    void calculate_statistic_point_sets(const vector <MatrixXd>& statistic_channels, std::map<c_range_key, c_point_set, c_range_key>& point_set_map)
     {
         int x, y;
 
-        int range[c_range_key::num_range_dim];
-        assert(c_range_key::num_range_dim == pc.num_channels);
+        vector<int> ranges;
+        
+        ranges.resize(statistic_channels.size());
+
+        point_set_map.clear();
+
         c_point pnt;
         for (y = 0; y < height; y++) {
             for (x = 0; x < width; x++) {
                 pnt.x = x;
                 pnt.y = y;
-                for (int c = 0; c < pc.num_channels; c++) {
-                    pnt.statistic[c] = statistic_channels[c](y, x);
-                    if (range_length[c] == 0)
-                        range[c] = 0;
+
+                for (int c = 0; c < statistic_channels.size(); c++)
+                {
+                    if (statistic_channels_params[c].range_length == 0)
+                        ranges[c] = 0;
                     else
                     {
-                        range[c] = (statistic_channels[c](y, x) - minCoeff_1[c]) / range_length[c];
-                        if (range[c] < 0)  range[c] = 0;
-                        if (range[c] > pc.num_chan_ranges)  range[c] = pc.num_chan_ranges;
+                        ranges[c] = (statistic_channels[c](y, x) - statistic_channels_params[c].minCoeff) / statistic_channels_params[c].range_length;
+                        if (ranges[c] < 0)  ranges[c] = 0;
+                        if (ranges[c] > pc.num_chan_ranges)  ranges[c] = pc.num_chan_ranges;
                     }
                 }
 
                 c_range_key range_key;
-                for (int i = 0; i < c_range_key::num_range_dim; i++)
+                range_key.ranges = ranges;
+
+                // add point to the neighbouring ranges too
+                for (int c = 0; c < statistic_channels.size(); c++)
                 {
-                    range_key.range_num[i] = range[i];
+                    // check neighbouring ranges for cases when statistic is on a range boundary
+                    for (int j = -1; j <= 1; j++)
+                    {
+                        if (c > 0 && j == 0)
+                            continue;  // otherwise not perturbed ranges is added multiple times to the same point set (num_statistic_channels to be exact)
+                        c_range_key rk;
+                        rk.ranges = ranges;
+                        rk.ranges[c] += j;
+
+                        c_point_set& ps = point_set_map[rk];
+                        ps.add_point(pnt);
+                    }
                 }
-                c_point_set& ps = point_set_map[range_key];
-                ps.add_point(pnt);
             }
         }
 
@@ -484,7 +515,7 @@ public:
             int pass_count = 0;
             for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
             {
-                double corr_err = it->calculate_correspondence_error(F);
+                it->calculate_correspondence_error(F);
 #if 0
                 cout << "F_err=" << it->F_err << "\n";
                 cout << "center1=" << it->point_set1->center;
@@ -492,7 +523,7 @@ public:
                 cout << "center2=" << it->point_set2->center;
                 cout << "\n";
 #endif
-                if (abs(corr_err) < pc.F_err_thresh)
+                if (it->corr_err < pc.F_err_thresh)
                     pass_count++;
             }
 //            cout << "\n";
@@ -507,13 +538,17 @@ public:
 
     void learn_statistic_parameters()
     {
-        c_statistic statistic;
-        
         for (learn_iter = 0; learn_iter < pc.learn_statistic_iterations; learn_iter++)
         {
+            statistics.clear();
             std::cout << "\nlearn_statistic_parameters iteration=" << learn_iter << "\n";
-            calculate_linear_statistic_parameters(pc.wx, pc.wy, statistic);
-            calculate_image_correspondence(statistic);
+            for (int i = 0; i < pc.num_stat_components; i++)
+            {
+                c_statistic statistic;
+                calculate_linear_statistic_parameters(statistic);
+                statistics.push_back(statistic);
+            }
+            calculate_image_correspondence();
         }
 
 #if 0
@@ -540,6 +575,14 @@ public:
             vis_rgb_channels[i].block(0, width+gap, height, width) = rgb_channels_2[i];
         }
 
+        // recalculate correspondence error with the best F 
+        for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
+        {
+            it->calculate_correspondence_error(F);
+        }
+        std::sort(correspondences.begin(), correspondences.end());
+
+        int corr_counter = 0;
         for (auto it = correspondences.begin(); it != correspondences.end(); it++)
         {
             int x1, y1, x2, y2;
@@ -550,18 +593,16 @@ public:
 
             double rgb[3] = { 0,0,0 };
 
-            double corr_err = it->calculate_correspondence_error(F);
-            if (abs(corr_err) < pc.F_err_thresh)
+            if (corr_counter > pc.num_displayed_correspondences)
+                break;
+            corr_counter++;
+
+            if (it->corr_err < pc.F_err_thresh)
             {
                 rgb[0] = 255;
             }
-            else
-            {
-                if (pc.hide_bad_correspondences)
-                    continue;
-            }
 
-#if 1
+#if 0
             if (/*(x1 == 4 && y1 == 90) || (x1 == 236 && y1 == 291) || (x1 == 261 && y1 == 438) */ (x1 == 9 && y1 == 91) )
             {
 
@@ -659,22 +700,29 @@ public:
         errno_t err = write_png_file(pc.point_correspondence_image_path.c_str(), vis_rgb_channels, 3);
     }
 
-    void calculate_image_correspondence(c_statistic& statistic)
+    void calculate_image_correspondence()
     {
-        MatrixXd statistic_channels_1[3];
-        MatrixXd statistic_channels_2[3];
-
-        point_sets_1.clear();
-        point_sets_2.clear();
+        statistic_channels_1.clear();
+        statistic_channels_2.clear();
+        statistic_channels_params.clear();
         correspondences.clear();
 
         for (int c = 0; c < pc.num_channels; c++) {
-            calculate_image_statistic(rgb_channels_1[c], statistic, statistic_channels_1[c]);
-            calculate_image_statistic(rgb_channels_2[c], statistic, statistic_channels_2[c]);
+            for (int s = 0; s < pc.num_stat_components; s++)
+            {
+                MatrixXd image_statistic;
+                calculate_image_statistic(rgb_channels_1[c], statistics[s], image_statistic);
+                statistic_channels_1.push_back(image_statistic);
 
-            minCoeff_1[c] = statistic_channels_1[c].minCoeff();
-            maxCoeff_1[c] = statistic_channels_1[c].maxCoeff();
-            range_length[c] = (maxCoeff_1[c] - minCoeff_1[c]) / pc.num_chan_ranges;
+                c_statistic_channel_params statistic_channel_params;
+                statistic_channel_params.minCoeff = image_statistic.minCoeff();
+                statistic_channel_params.maxCoeff = image_statistic.maxCoeff();
+                statistic_channel_params.range_length = (statistic_channel_params.maxCoeff - statistic_channel_params.minCoeff) / pc.num_chan_ranges;
+                statistic_channels_params.push_back(statistic_channel_params);
+
+                calculate_image_statistic(rgb_channels_2[c], statistics[s], image_statistic);
+                statistic_channels_2.push_back(image_statistic);
+            }
         }
 
         calculate_statistic_point_sets(statistic_channels_1, point_sets_1);
@@ -687,31 +735,28 @@ public:
         int statistic_localization_y = height*pc.statistic_localization;
         for (auto it = point_sets_1.begin(); it != point_sets_1.end(); ++it)
         {
+            const c_range_key* prk = &it->first;
             c_point_set* ps1 = &it->second;
 
-            for (int i = 0; i < c_range_key::num_range_dim; i++)
-            {
-                // check neighbouring ranges for cases when statistic is on a range boundary
-                for (int j = -1; j <= 1; j++)
-                {
-                    if (i > 0 && j == 0)
-                        continue;  // otherwise there are duplicate 0 0 0 combinations
-                    c_range_key rk = it->first;
-                    rk.range_num[i] += j;
+            c_point_set* ps2 = &point_sets_2[*prk];
+            if (ps1->points.size() == 0 || ps2->points.size() == 0)
+                continue;
 
-                    c_point_set* ps2 = &point_sets_2[rk];
-                    if (ps1->points.size() == 0 || ps2->points.size() == 0)
-                        continue;
-                    if (ps1->diam(0) < statistic_localization_x && ps1->diam(1) < statistic_localization_y &&
-                        ps2->diam(0) < statistic_localization_x && ps2->diam(1) < statistic_localization_y)
-                    {
-                        c_point_set_correspondence psc;
-                        psc.point_set1 = ps1;
-                        psc.point_set2 = ps2;
-                        correspondences.push_back(psc);
-                    }
-                }
+            if (ps1->diam(0) < statistic_localization_x && ps1->diam(1) < statistic_localization_y &&
+                ps2->diam(0) < statistic_localization_x && ps2->diam(1) < statistic_localization_y)
+            {
+                c_point_set_correspondence psc;
+                psc.point_set1 = ps1;
+                psc.point_set2 = ps2;
+                correspondences.push_back(psc);
             }
+        }
+
+        assert(correspondences.size() > 0);
+        if (correspondences.size() == 0)
+        {
+            std::cout << "correspondences.size = " << correspondences.size() << "\n";
+            return;
         }
 
         double pass_ratio;
@@ -720,6 +765,10 @@ public:
         double pass_ratio_thresh = (double)std::min(pc.pass_ratio_thresh, (int)correspondences.size()) / (double)correspondences.size();  // 8 are fit automatically when F is selected
 
         std::cout << "correspondences size=" << correspondences.size() << " pass_ratio_thresh=" << pass_ratio_thresh << " pass_ratio=" << pass_ratio << "\n";
+
+        JacobiSVD<MatrixXd> best_F_svd(best_F, ComputeThinU | ComputeThinV);
+        cout << "best_F=" << best_F << "\n";
+        cout << "best_F_S=" << best_F_svd.singularValues() << "\n";
 
         if (pass_ratio >= pass_ratio_thresh)
         {
@@ -764,7 +813,12 @@ public:
 
 //    vector <MatrixXd> good_statistic_parameters;
 
-    double minCoeff_1[3], maxCoeff_1[3], range_length[3];
+    vector <c_statistic> statistics;
+
+    vector <MatrixXd> statistic_channels_1;
+    vector <MatrixXd> statistic_channels_2;
+    vector <c_statistic_channel_params> statistic_channels_params;
+
 #if 0
     c_image_graph image1_graph;
     c_image_graph image2_graph;

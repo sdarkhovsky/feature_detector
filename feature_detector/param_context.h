@@ -24,18 +24,11 @@ public:
         num_ransack_iterations = 20;
         F_err_thresh = 2*2*4;
         statistic_type = 0;
-        hide_bad_correspondences = false;
-        pass_ratio_thresh = 24;
+        num_displayed_correspondences = 20;
+        pass_ratio_thresh = 32;
         seed_random_engines = false;
+        num_stat_components = 3;
     }
-
-    /*
-    Command line arguments:
-    -x0 136 -y0 53 -x1 90 -y1 54 -num_bins 10 -wx 3 -wy 3 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png -wdif C:\Users\Sam\Documents\EyeSignalsProjects\images\win_diff.png
-    -batch  -candcoef 0.01 -numcand 3 -num_bins 10 -wx 5 -wy 5 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png
-    -x0 102 -y0 52 -x1 58 -y1 51 -candcoef 0.01 -num_bins 10 -wx 3 -wy 3 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png -ovline C:\Users\Sam\Documents\EyeSignalsProjects\images\vline_diff.png
-    -x0 78 -y0 12 -x1 32 -y1 8 -num_bins 10 -wx 3 -wy 3 -i1 C:\Users\Sam\Documents\EyeSignalsProjects\images\image1_025.png -i2 C:\Users\Sam\Documents\EyeSignalsProjects\images\image2_025.png -oid C:\Users\Sam\Documents\EyeSignalsProjects\images\identity_score.png -oavint C:\Users\Sam\Documents\EyeSignalsProjects\images\av_intensity_diff.png -ohist C:\Users\Sam\Documents\EyeSignalsProjects\images\histogram_diff.png -ograd C:\Users\Sam\Documents\EyeSignalsProjects\images\gradient_diff.png
-    */
 
     void get_params_from_command_line(int argc, char **argv)
     {
@@ -75,9 +68,10 @@ public:
                 draw_corr_point = false;
             }
 
-            if (arg == "-hbc")
+            if (arg == "-ndc")
             {
-                hide_bad_correspondences = true;
+                i++;
+                num_displayed_correspondences = atoi(argv[i]);
             }
 
             if (arg == "-seed")
@@ -110,8 +104,12 @@ public:
                 i++;
                 pass_ratio_thresh = atoi(argv[i]);
             }
-
-
+            
+            if (arg == "-nsc")
+            {
+                i++;
+                num_stat_components = atoi(argv[i]);
+            }
 
             if (arg == "-ncr")
             {
@@ -269,7 +267,8 @@ public:
     int num_ransack_iterations;
     double  F_err_thresh;
     int statistic_type;
-    bool hide_bad_correspondences;
+    int num_displayed_correspondences;
     int pass_ratio_thresh;
     bool seed_random_engines;
+    int num_stat_components;
 };
