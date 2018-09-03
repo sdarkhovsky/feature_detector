@@ -761,7 +761,7 @@ public:
         cout << "best_F=" << best_F << "\n";
         cout << "best_F_S=" << best_F_svd.singularValues() << "\n";
 
-        if (pass_ratio >= pc.pass_ratio_thresh)
+        if (pass_ratio >= pc.pass_ratio_thresh && correspondences.size() >= pc.min_num_correspondences)
         {
 //            good_statistic_parameters.push_back(linear_statistic_parameters);
             show_correspondences(best_F);

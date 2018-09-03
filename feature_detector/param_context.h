@@ -21,13 +21,14 @@ public:
         num_chan_ranges = 10;
         statistic_localization = 0.1;
         learn_statistic_iterations = 20;
-        num_ransack_iterations = 20;
+        num_ransack_iterations = 100;
         F_err_thresh = 2*2*4;
         statistic_type = 0;
         num_displayed_correspondences = 20;
         pass_ratio_thresh = 0.1;
         seed_random_engines = false;
         num_stat_components = 3;
+        min_num_correspondences = 32;
     }
 
     void get_params_from_command_line(int argc, char **argv)
@@ -109,6 +110,12 @@ public:
             {
                 i++;
                 num_stat_components = atoi(argv[i]);
+            }
+
+            if (arg == "-mnc")
+            {
+                i++;
+                min_num_correspondences = atoi(argv[i]);
             }
 
             if (arg == "-ncr")
@@ -271,4 +278,5 @@ public:
     double pass_ratio_thresh;
     bool seed_random_engines;
     int num_stat_components;
+    int min_num_correspondences;
 };
