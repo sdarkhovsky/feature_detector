@@ -478,39 +478,32 @@ public:
             cout << "U=" << svd.matrixU() << "\n";
             cout << "V="<< svd.matrixV() << "\n";
             cout << "S="<< svd.singularValues() << "\n";
+
+            MatrixXd S = MatrixXd::Zero(9, 9);
+            auto& SV = svd.singularValues();
+            assert(SV.size() == 9);
+            for (int i_sv = 0; i_sv < SV.size(); i_sv++)
+            {
+                S(i_sv, i_sv) = SV(i_sv);
+            }
+            
+            MatrixXd A1 = svd.matrixU()*S*svd.matrixV().transpose();
+            cout << "A=" << A << "\n";
+            cout << "A1=" << A1 << "\n";
 #endif
             auto& V = svd.matrixV();
 
-            // smallest singular value
-            auto& S = svd.singularValues();
-            int i_sv;
+            VectorXd vF = V.col(8);
 
-            // the last 9th singular value is suppose to be 0 as F has rank 8, so just skip it, start from  S.size() - 2
-            for (i_sv = S.size() - 2; i_sv >= 0; i_sv--)
-            {
-#define very_small_number 1.0e-20     // 1.0e-34
-                if (abs(i_sv) > very_small_number)
-                    break;
-            }
-            VectorXd vF = V.col(i_sv);
-#if 0
-            cout << "i_sv=" << i_sv << "\n";
-            cout << "vF=" << vF << "\n";
-#endif
             MatrixXd F(3, 3);
             F << vF(0), vF(1), vF(2),
                 vF(3), vF(4), vF(5),
                 vF(6), vF(7), vF(8);
-//            cout << "F1=" << F << "\n";
-            F = T1.transpose()*F*T2;
-#if 0
-            cout << "T1=" << T1 << "\n";
-            cout << "T2=" << T2 << "\n";
-            cout << "F2=" << F << "\n";
-#endif
-//            F.normalize();
-
 //            cout << "F=" << F << "\n";
+            F = T1.transpose()*F*T2;
+
+            //            F.normalize();
+
 
             int pass_count = 0;
             for (auto it = correspondences.begin(); it != correspondences.end(); ++it)
@@ -602,8 +595,8 @@ public:
                 rgb[0] = 255;
             }
 
-#if 0
-            if (/*(x1 == 4 && y1 == 90) || (x1 == 236 && y1 == 291) || (x1 == 261 && y1 == 438) */ (x1 == 9 && y1 == 91) )
+#if 1
+            if (/*(x1 == 4 && y1 == 90) || (x1 == 236 && y1 == 291) || (x1 == 261 && y1 == 438) */ (x1 == 6 && y1 == 91) )
             {
 
                 // draw epipolar line 
@@ -618,10 +611,9 @@ public:
                     }
                 }
 
-                cout << "\corr_err=" << corr_err << "\n";
+                cout << "\corr_err=" << it->corr_err << "\n";
                 cout << "set1->center=" << it->point_set1->center << "\n" << "set1->diam=" << it->point_set1->diam << "\n";
                 cout << "set2->center=" << it->point_set2->center << "\n" << "set2->diam=" << it->point_set2->diam << "\n";
-                cout << "F=" << F << "\n";
                 cout << "point_set1=\n";
                 for (int i = 0; i < it->point_set1->points.size(); i++)
                 {
@@ -762,15 +754,14 @@ public:
         double pass_ratio;
         MatrixXd best_F;
         check_correspondences(best_F, pass_ratio);
-        double pass_ratio_thresh = (double)std::min(pc.pass_ratio_thresh, (int)correspondences.size()) / (double)correspondences.size();  // 8 are fit automatically when F is selected
 
-        std::cout << "correspondences size=" << correspondences.size() << " pass_ratio_thresh=" << pass_ratio_thresh << " pass_ratio=" << pass_ratio << "\n";
+        std::cout << "correspondences size=" << correspondences.size() << " pass_ratio=" << pass_ratio << "\n";
 
         JacobiSVD<MatrixXd> best_F_svd(best_F, ComputeThinU | ComputeThinV);
         cout << "best_F=" << best_F << "\n";
         cout << "best_F_S=" << best_F_svd.singularValues() << "\n";
 
-        if (pass_ratio >= pass_ratio_thresh)
+        if (pass_ratio >= pc.pass_ratio_thresh)
         {
 //            good_statistic_parameters.push_back(linear_statistic_parameters);
             show_correspondences(best_F);

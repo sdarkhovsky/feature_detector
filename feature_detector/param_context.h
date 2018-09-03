@@ -25,7 +25,7 @@ public:
         F_err_thresh = 2*2*4;
         statistic_type = 0;
         num_displayed_correspondences = 20;
-        pass_ratio_thresh = 32;
+        pass_ratio_thresh = 0.1;
         seed_random_engines = false;
         num_stat_components = 3;
     }
@@ -102,7 +102,7 @@ public:
             if (arg == "-prt")
             {
                 i++;
-                pass_ratio_thresh = atoi(argv[i]);
+                pass_ratio_thresh = atof(argv[i]);
             }
             
             if (arg == "-nsc")
@@ -268,7 +268,7 @@ public:
     double  F_err_thresh;
     int statistic_type;
     int num_displayed_correspondences;
-    int pass_ratio_thresh;
+    double pass_ratio_thresh;
     bool seed_random_engines;
     int num_stat_components;
 };
