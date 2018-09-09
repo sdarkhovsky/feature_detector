@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "image_correspondence.h"
+#include "learner.h"
 
 // version 5-24-18-2-03
 
@@ -562,6 +563,9 @@ int main(int argc, char **argv)
     MatrixXd identity_score;
 
     pc.get_params_from_command_line(argc, argv);
+
+    c_learner learner(pc);
+    learner.run();
 
     c_image_correspondence image_correspondence(pc);
     image_correspondence.learn_statistic_parameters();
