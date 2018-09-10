@@ -19,9 +19,29 @@ public:
         pc = _pc;
     }
 
-    void run()
+    void read_sensors()
     {
 
+    }
+
+    void send_commands()
+    {
+
+    }
+
+    void learn()
+    {
+
+    }
+
+    void run()
+    {
+        while (true)
+        {
+            read_sensors();
+            send_commands();
+            learn();
+        }
     }
 
     param_context pc;
