@@ -564,7 +564,7 @@ int main(int argc, char **argv)
 
     pc.get_params_from_command_line(argc, argv);
 
-    c_learner learner(pc);
+    Learner::c_learner learner(pc);
     learner.run();
 
     c_image_correspondence image_correspondence(pc);
