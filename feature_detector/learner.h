@@ -12,7 +12,7 @@
 using namespace std;
 
 namespace Learner {
-
+    static const int num_arm_joints = 3;
     class c_statistic
     {
     public:
@@ -200,24 +200,79 @@ namespace Learner {
         vector <double> X;
     };
 
-    class c_actuator_command
+    class c_actuator
     {
     public:
-        vector<double> tau;
+        c_actuator()
+        {
+            for (int i = 0; i < num_arm_joints; i++)
+            {
+                joint_RT[i] = Matrix4d::Identity();
+            }
+
+            joint_axis[0] << 0, 1, 0;
+            for (int i = 1; i < num_arm_joints; i++)
+            {
+                joint_axis[i] << 1, 0, 0;
+            }
+        }
+
+        void calculate_joint_transformations(const c_actuator& prev_actuator)
+        {
+            auto& prev_ang_vel = prev_actuator.ang_vel;
+            double dt = 1.0;
+            for (int i = 0; i < num_arm_joints; i++)
+            {
+                Matrix4d M;
+                M << 1, -dt*prev_ang_vel[i]*joint_axis[i](2), dt*prev_ang_vel[i] * joint_axis[i](1), 0,
+                    dt*prev_ang_vel[i] * joint_axis[i](2), 1, -dt*prev_ang_vel[i] * joint_axis[i](0), 0,
+                    -dt*prev_ang_vel[i] * joint_axis[i](1), dt*prev_ang_vel[i] * joint_axis[i](0), 1, 0,
+                    0, 0, 0, 1;
+
+                joint_RT[i] = M*prev_actuator.joint_RT[i];  // (NB 15, p.136)
+            }
+
+            RT = joint_RT[0];
+            for (int i = 1; i < num_arm_joints; i++)
+            {
+                RT = joint_RT[i]* RT;
+            }
+            RT_inv = RT.inverse();
+        }
+
+        void get_RT_inv(Matrix3d& R, Vector3d& T)
+        {
+            R = RT_inv.topLeftCorner(3, 3);
+            T = RT_inv.topRightCorner(3, 1);
+        }
+
+        Vector3d joint_axis[num_arm_joints];
+        MatrixXd joint_RT[num_arm_joints];   // transformation from a reference frame fixed to the link k to a reference frame fixed to the link k+1
+        double ang_vel[num_arm_joints];
+        MatrixXd RT; // transformation from a reference frame fixed to the link 0 to a reference frame fixed to the link num_arm_joints
+        MatrixXd RT_inv;
     };
 
     class c_time_slot
     {
     public:
+        c_time_slot()
+        {
+            K_inv = MatrixXd::Identity(3, 3);
+        }
 
         vector<MatrixXd> rgb_channels;
         vector <c_sensor_region> sensor_regions;
         vector <c_world_region> world_regions;
-        vector <c_actuator_command> actuator_commands;
 
         vector <c_statistic_channel> statistic_channels;
 
         std::map<c_range_key, c_point_set, c_range_key> point_sets;
+        std::map<c_range_key, Vector3d, c_range_key> obs_X;
+        std::map<c_range_key, Vector3d, c_range_key> pred_X;
+
+        c_actuator actuator;
+        MatrixXd K_inv;
     };
 
     class c_learner
@@ -235,7 +290,17 @@ namespace Learner {
 
         void send_actuator_commands()
         {
+            std::uniform_real_distribution<double> distribution(-1.0, 1.0);
+            if (pc.seed_random_engines)
+            {
+                actuator_command_generator.seed(time(NULL));
+            }
 
+            auto cur_ts = time_slots.rbegin();
+            for (int i = 0; i < num_arm_joints; i++)
+            {
+                cur_ts->actuator.ang_vel[i] = distribution(actuator_command_generator);
+            }
         }
 
         void calculate_statistic_point_sets(vector <c_statistic_channel>& statistic_channels, std::map<c_range_key, c_point_set, c_range_key>& point_set_map)
@@ -301,6 +366,10 @@ namespace Learner {
         {
             // input: rgb_channels
             // output: sensor_regions
+
+            int width = time_slots.back().rgb_channels[0].cols();
+            int height = time_slots.back().rgb_channels[0].rows();
+
             auto& statistic_channels = time_slots.back().statistic_channels;
             for (int c = 0; c < time_slots.back().rgb_channels.size(); c++) {
                 for (int s = 0; s < pc.num_stat_components; s++)
@@ -311,29 +380,87 @@ namespace Learner {
             }
 
             calculate_statistic_point_sets(statistic_channels, time_slots.back().point_sets);
-        }
 
-        void predict_transformation_of_camera_ref_frame_from_actuator_commands()
-        {
-            // output: R,T with respect to the initial camera reference frame
+            // filter corresponence sets by set size
+            int statistic_localization_x = width*pc.statistic_localization;
+            int statistic_localization_y = height*pc.statistic_localization;
+            auto& point_sets = time_slots.back().point_sets;
+            for (auto it = point_sets.begin(); it != point_sets.end(); )
+            {
+                const c_range_key* prk = &it->first;
+                c_point_set* ps = &it->second;
+
+                if (ps->points.size() == 0)
+                {
+                    it = point_sets.erase(it);
+                    continue;
+                }
+
+                if (!(ps->diam(0) < statistic_localization_x && ps->diam(1) < statistic_localization_y))
+                {
+                    it = point_sets.erase(it);
+                    continue;
+                }
+                ++it;
+            }
         }
 
         void calculate_non_observed_world_from_behaviour()
         {
-
+            auto cur_ts = time_slots.rbegin();
+            auto prev_ts = std::next(cur_ts);
+            cur_ts->pred_X = prev_ts->obs_X;
         }
 
-        void reconcile_observed_non_observed_worlds(bool& error_significant)
+        void reconcile_observed_non_observed_worlds(double& max_diff)
         {
+            auto cur_ts = time_slots.rbegin();
+            max_diff = 0;
+            for (auto it = cur_ts->obs_X.begin(); it != cur_ts->obs_X.end(); ++it)
+            {
+                const c_range_key* prk = &it->first;
+                auto& obs_X = it->second;
 
+                auto& pred_X = cur_ts->pred_X[*prk];
+                double diff = (obs_X - pred_X).norm();
+
+                if (diff > max_diff)
+                    max_diff = diff;
+            }
         }
 
         void calculate_observed_world()
         {
             // input: sensor_regions
             // output world_regions
-            predict_transformation_of_camera_ref_frame_from_actuator_commands();
-            // X ~ R1*K_inv*x1+T1; X ~ R2*(K_inv*x2)+T2 for x1,x2 of the same identity
+            auto cur_ts = time_slots.rbegin();
+            auto prev_ts = std::next(cur_ts);
+
+            cur_ts->actuator.calculate_joint_transformations(prev_ts->actuator);
+
+            for (auto it = prev_ts->point_sets.begin(); it != prev_ts->point_sets.end(); ++it)
+            {
+                const c_range_key* prk = &it->first;
+                c_point_set* prev_ps = &it->second;
+
+                c_point_set* cur_ps = &cur_ts->point_sets[*prk];
+
+                if (prev_ps->points.size() == 0 || cur_ps->points.size() == 0)
+                    continue;
+                // calculate obs_X in the reference frame of the camera at previous time slot (NB 15,pp.133, 136)
+                Matrix3d R;
+                Vector3d T;
+
+                prev_ts->actuator.get_RT_inv(R, T);
+                Vector3d p1 = T;
+                Vector3d d1 = R*prev_ts->K_inv*prev_ps->center;
+
+                cur_ts->actuator.get_RT_inv(R, T);
+                Vector3d p2 = T;
+                Vector3d d2 = R*cur_ts->K_inv*cur_ps->center;
+                Vector3d n2 = d2.cross(d1.cross(d2));
+                cur_ts->obs_X[*prk] = p1 + (p2 - p1).dot(n2) / (d1.dot(n2))*d1;
+            }
         }
 
         void try_decrease_error()
@@ -368,22 +495,20 @@ namespace Learner {
         */
         void learn()
         {
-            bool error_significant;
+            double max_diff;
 
             calculate_sensor_identities();
+            if (time_slots.size() <= 1)
+                return;
+
             calculate_observed_world();
             calculate_non_observed_world_from_behaviour();
-            reconcile_observed_non_observed_worlds(error_significant);
-            if (error_significant)
-            {
-                try_decrease_error();
-            }
+            reconcile_observed_non_observed_worlds(max_diff);
+            try_decrease_error();
         }
 
         void initialize_learning_procedures_and_parameters()
         {
-            camera_params = MatrixXd::Identity(3, 3);
-
             statistics.clear();
             for (int i = 0; i < pc.num_stat_components; i++)
             {
@@ -408,7 +533,8 @@ namespace Learner {
         param_context pc;
         list<c_time_slot> time_slots;
 
-        MatrixXd camera_params;
         vector <c_statistic> statistics;
+
+        std::default_random_engine actuator_command_generator;
     };
 }
