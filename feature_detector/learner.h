@@ -215,6 +215,10 @@ namespace Learner {
             {
                 joint_axis[i] << 1, 0, 0;
             }
+
+            ang_mult = 1.0;
+
+            calculate_RT_from_joint_RT();
         }
 
         void calculate_joint_transformations(const c_actuator& prev_actuator)
@@ -232,12 +236,7 @@ namespace Learner {
                 joint_RT[i] = M*prev_actuator.joint_RT[i];  // (NB 15, p.136)
             }
 
-            RT = joint_RT[0];
-            for (int i = 1; i < num_arm_joints; i++)
-            {
-                RT = joint_RT[i]* RT;
-            }
-            RT_inv = RT.inverse();
+            calculate_RT_from_joint_RT();
         }
 
         void get_RT_inv(Matrix3d& R, Vector3d& T)
@@ -249,8 +248,20 @@ namespace Learner {
         Vector3d joint_axis[num_arm_joints];
         MatrixXd joint_RT[num_arm_joints];   // transformation from a reference frame fixed to the link k to a reference frame fixed to the link k+1
         double ang_vel[num_arm_joints];
+        double ang_mult;
         MatrixXd RT; // transformation from a reference frame fixed to the link 0 to a reference frame fixed to the link num_arm_joints
         MatrixXd RT_inv;
+
+    protected:
+        void calculate_RT_from_joint_RT()
+        {
+            RT = joint_RT[0];
+            for (int i = 1; i < num_arm_joints; i++)
+            {
+                RT = joint_RT[i] * RT;
+            }
+            RT_inv = RT.inverse();
+        }
     };
 
     class c_time_slot
@@ -290,7 +301,7 @@ namespace Learner {
 
         void send_actuator_commands()
         {
-            std::uniform_real_distribution<double> distribution(-1.0, 1.0);
+            std::uniform_int_distribution<> distribution(-1, 1);
             if (pc.seed_random_engines)
             {
                 actuator_command_generator.seed(time(NULL));
@@ -465,7 +476,11 @@ namespace Learner {
 
         void try_decrease_error()
         {
-
+            /*
+            K_inv, ang_mult, joint_axis, 
+            joint_RT[i] for time slot 0
+            statistics
+            */
         }
 
         /*
