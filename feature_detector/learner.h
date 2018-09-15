@@ -216,6 +216,11 @@ namespace Learner {
                 joint_axis[i] << 1, 0, 0;
             }
 
+            for (int i = 0; i < num_arm_joints; i++)
+            {
+                joint_orig[i] << 0, 0, 0;
+            }
+
             ang_mult = 1.0;
 
             calculate_RT_from_joint_RT();
@@ -228,9 +233,9 @@ namespace Learner {
             for (int i = 0; i < num_arm_joints; i++)
             {
                 Matrix4d M;
-                M << 1, -dt*prev_ang_vel[i]*joint_axis[i](2), dt*prev_ang_vel[i] * joint_axis[i](1), 0,
-                    dt*prev_ang_vel[i] * joint_axis[i](2), 1, -dt*prev_ang_vel[i] * joint_axis[i](0), 0,
-                    -dt*prev_ang_vel[i] * joint_axis[i](1), dt*prev_ang_vel[i] * joint_axis[i](0), 1, 0,
+                M << 1, -dt*prev_ang_vel[i]*joint_axis[i](2), dt*prev_ang_vel[i] * joint_axis[i](1), joint_orig[i](0),
+                    dt*prev_ang_vel[i] * joint_axis[i](2), 1, -dt*prev_ang_vel[i] * joint_axis[i](0), joint_orig[i](1),
+                    -dt*prev_ang_vel[i] * joint_axis[i](1), dt*prev_ang_vel[i] * joint_axis[i](0), 1, joint_orig[i](2),
                     0, 0, 0, 1;
 
                 joint_RT[i] = M*prev_actuator.joint_RT[i];  // (NB 15, p.136)
@@ -246,6 +251,7 @@ namespace Learner {
         }
 
         Vector3d joint_axis[num_arm_joints];
+        Vector3d joint_orig[num_arm_joints];
         MatrixXd joint_RT[num_arm_joints];   // transformation from a reference frame fixed to the link k to a reference frame fixed to the link k+1
         double ang_vel[num_arm_joints];
         double ang_mult;
@@ -477,7 +483,7 @@ namespace Learner {
         void try_decrease_error()
         {
             /*
-            K_inv, ang_mult, joint_axis, 
+            K_inv, ang_mult, joint_axis, joint_orig,
             joint_RT[i] for time slot 0
             statistics
             */
